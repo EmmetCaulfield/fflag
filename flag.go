@@ -188,11 +188,12 @@ type Flag struct {
 }
 
 func (f *Flag) Set(value interface{}) error {
+	// Prefer the SetValue interface if present:
 	if setter, ok := f.Value.(types.SetValue); ok {
 		if str, ok := value.(string); ok {
 			return setter.Set(str)
 		}
-		f.ParentFlagSet.Failf("Cannot pass non-string to SetValue.Set(string) in flag.Set() for flag '%s'", f.Label)
+		f.Failf("Cannot pass non-string to SetValue.Set(string) in flag.Set() for flag '%s'", f.Label)
 		return &FlagError{"failed to pass non-string to SetValue.Set()"}
 	}
 
@@ -200,13 +201,13 @@ func (f *Flag) Set(value interface{}) error {
 		var boolp *bool
 		var ok, def bool
 		if boolp, ok = f.Value.(*bool); !ok {
-			f.ParentFlagSet.Failf("flag.Set(nil) called for non-boolean flag '%s' of type %T", f.Label, f.Value)
+			f.Failf("flag.Set(nil) called for non-boolean flag '%s' of type %T", f.Label, f.Value)
 			return &FlagError{"cannot set nil value for non-bool"}
 		}
 		// If a default was given, use it, otherwise the zero
 		// value (`false`) returned by the type assertion is the
 		// default we want in the absence of a stipulated default
-		def, _ = f.Default.(bool)
+		def, _ = f.GetDefault().(bool)
 		*boolp = !def
 		return nil
 	}
@@ -214,24 +215,24 @@ func (f *Flag) Set(value interface{}) error {
 	if str, ok := value.(string); ok {
 		err := types.FromStr(f.Value, str)
 		if err != nil {
-			f.ParentFlagSet.Failf("Failed to convert '%s' to %T: %v", str, f.Value, err)
+			f.Failf("failed to convert '%s' to %T: %v", str, f.Value, err)
 		}
 		return err
 	}
 
-	f.ParentFlagSet.Failf("Type %T not handled in flag.Set() for flag '%s'", f.Label)
+	f.Failf("type %T not handled in flag.Set() for flag '%s'", f.Label)
 	return &FlagError{"type not handled in flag.Set()"}
 }
 
 func (f *Flag) GetDefaultLen() int {
-	if f.Default == nil {
-		return 0
+	return types.SliceLen(f.Default)
+}
+
+func (f *Flag) GetDefault() interface{} {
+	if f.GetDefaultLen() > 0 {
+		return types.ItemAt(f.Default, 0)
 	}
-	slice, ok := f.Default.([]interface{})
-	if ok {
-		return len(slice)
-	}
-	return 0
+	return f.Default
 }
 
 func (f *Flag) GetDefaultDescription() string {
@@ -416,4 +417,11 @@ func IsValidLabel(label string) bool {
 		return false
 	}
 	return true
+}
+
+func (f *Flag) Failf(format string, args ...interface{}) {
+	if f.ParentFlagSet == nil {
+		panic("parent flagset not set")
+	}
+	f.ParentFlagSet.Failf(format, args...)
 }
