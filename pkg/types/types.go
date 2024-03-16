@@ -303,6 +303,9 @@ func BitSize(ix interface{}) int {
 
 // Returns the length of the underlying slice or -1 if not applicable
 func SliceLen(ix interface{}) int {
+	if ix == nil {
+		return -1
+	}
 	// It seems that there's no way of saying:
 	//
 	//     if v, ok := ix.([]interface{}); ok { ... }
@@ -368,6 +371,151 @@ func SliceLen(ix interface{}) int {
 		return len(*v)
 	}
 	return -1
+}
+
+// Returns the element at index `i` of the underlying slice or nil if
+// not applicable
+func ItemAt(ix interface{}, i int) interface{} {
+	if ix == nil {
+		return nil
+	}
+	if i < 0 {
+		return nil
+	}
+	// It seems that there's no way of saying:
+	//
+	//     if v, ok := ix.([]interface{}); ok { ... }
+	//     case []interface{}:
+	//     if v, ok := ix.([]any); ok { ... }
+	//     case []any:
+	switch v := ix.(type) {
+	case []bool:
+		if i < len(v) {
+			return v[i]
+		}
+	case *[]bool:
+		if i < len(*v) {
+			return (*v)[i]
+		}
+
+	case []uint:
+		if i < len(v) {
+			return v[i]
+		}
+	case *[]uint:
+		if i < len(*v) {
+			return (*v)[i]
+		}
+
+	case []uint8: // also `byte`
+		if i < len(v) {
+			return v[i]
+		}
+	case *[]uint8:
+		if i < len(*v) {
+			return (*v)[i]
+		}
+
+	case []uint16:
+		if i < len(v) {
+			return v[i]
+		}
+	case *[]uint16:
+		if i < len(*v) {
+			return (*v)[i]
+		}
+
+	case []uint32: // also `rune`
+		if i < len(v) {
+			return v[i]
+		}
+	case *[]uint32:
+		if i < len(*v) {
+			return (*v)[i]
+		}
+
+	case []uint64:
+		if i < len(v) {
+			return v[i]
+		}
+	case *[]uint64:
+		if i < len(*v) {
+			return (*v)[i]
+		}
+
+	case []int:
+		if i < len(v) {
+			return v[i]
+		}
+	case *[]int:
+		if i < len(*v) {
+			return (*v)[i]
+		}
+
+	case []int8:
+		if i < len(v) {
+			return v[i]
+		}
+	case *[]int8:
+		if i < len(*v) {
+			return (*v)[i]
+		}
+
+	case []int16:
+		if i < len(v) {
+			return v[i]
+		}
+	case *[]int16:
+		if i < len(*v) {
+			return (*v)[i]
+		}
+
+	case []int32: // also `rune`
+		if i < len(v) {
+			return v[i]
+		}
+	case *[]int32:
+		if i < len(*v) {
+			return (*v)[i]
+		}
+
+	case []int64:
+		if i < len(v) {
+			return v[i]
+		}
+	case *[]int64:
+		if i < len(*v) {
+			return (*v)[i]
+		}
+
+	case []float32:
+		if i < len(v) {
+			return v[i]
+		}
+	case *[]float32:
+		if i < len(*v) {
+			return (*v)[i]
+		}
+
+	case []float64:
+		if i < len(v) {
+			return v[i]
+		}
+	case *[]float64:
+		if i < len(*v) {
+			return (*v)[i]
+		}
+
+	case []string:
+		if i < len(v) {
+			return v[i]
+		}
+	case *[]string:
+		if i < len(*v) {
+			return (*v)[i]
+		}
+	}
+	return nil
 }
 
 // Returns true if ixa is a pointer to the same type as ixb
