@@ -74,6 +74,24 @@ func WithOutputWriter(w io.Writer) FlagSetOption {
 	}
 }
 
+func WithPanicOnFail() FlagSetOption {
+	return func(fs *FlagSet) {
+		fs.OnFail.SetPanicBit()
+	}
+}
+
+func WithContinueOnFail() FlagSetOption {
+	return func(fs *FlagSet) {
+		fs.OnFail.SetContinueBit()
+	}
+}
+
+func WithSilentFail() FlagSetOption {
+	return func(fs *FlagSet) {
+		fs.OnFail.SetSilentBit()
+	}
+}
+
 func IgnoringDoubleDash() FlagSetOption {
 	return func(fs *FlagSet) {
 		fs.IgnoreDoubleDash = true
@@ -168,8 +186,7 @@ func Var(value interface{}, label string, usage string, opts ...FlagOption) {
 
 func (fs *FlagSet) Failf(format string, args ...interface{}) {
 	if !fs.OnFail.TstSilentBit() {
-		w := os.Stderr
-		fmt.Fprintf(w, "ERROR: " + format + "\n", args...)
+		fmt.Fprintf(fs.Output, "ERROR: " + format + "\n", args...)
 	}
 	if fs.OnFail.TstContinueBit() {
 		return
