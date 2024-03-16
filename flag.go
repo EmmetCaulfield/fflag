@@ -160,31 +160,56 @@ func (fe *FlagError) Error() string {
 
 type CallbackFunction func(value interface{}, label string, arg string, pos int)
 
-type LabelAlias struct {
-	Label    string
-	Obsolete bool
-}
+type FlagType int8
 
-type LetterAlias struct {
-	Letter   rune
-	Obsolete bool
-}
+const (
+	ClearFlagType  FlagType = 0b00000000
+	LabelAliasBit           = 0b00000001
+	LetterAliasBit          = 0b00000010
+	ObsoleteBit             = 0b00000100
+	HiddenBit               = 0b00001000
+	ChangedBit              = 0b00010000
+	CounterBit              = 0b00100000
+	RepeatableBit           = 0b01000000
+)
+
+func (ft *FlagType) TstLabelAliasBit() bool  { return *ft|LabelAliasBit != 0 }
+func (ft *FlagType) TstLetterAliasBit() bool { return *ft|LetterAliasBit != 0 }
+func (ft *FlagType) TstObsoleteBit() bool    { return *ft|ObsoleteBit != 0 }
+func (ft *FlagType) TstHiddenBit() bool      { return *ft|HiddenBit != 0 }
+func (ft *FlagType) TstChangedBit() bool     { return *ft|ChangedBit != 0 }
+func (ft *FlagType) TstCounterBit() bool     { return *ft|CounterBit != 0 }
+func (ft *FlagType) TstRepeatableBit() bool  { return *ft|RepeatableBit != 0 }
+func (ft *FlagType) TstAliasBits() bool      { return (*ft|LetterAliasBit)|(*ft|LabelAliasBit) != 0 }
+
+func (ft *FlagType) ClrLabelAliasBit()  { *ft = *ft & ^LabelAliasBit }
+func (ft *FlagType) ClrLetterAliasBit() { *ft = *ft & ^LetterAliasBit }
+func (ft *FlagType) ClrObsoleteBit()    { *ft = *ft & ^ObsoleteBit }
+func (ft *FlagType) ClrHiddenBit()      { *ft = *ft & ^HiddenBit }
+func (ft *FlagType) ClrChangedBit()     { *ft = *ft & ^ChangedBit }
+func (ft *FlagType) ClrCounterBit()     { *ft = *ft & ^CounterBit }
+func (ft *FlagType) ClrRepeatableBit()  { *ft = *ft & ^RepeatableBit }
+
+func (ft *FlagType) SetLabelAliasBit()  { *ft = *ft | LabelAliasBit }
+func (ft *FlagType) SetLetterAliasBit() { *ft = *ft | LetterAliasBit }
+func (ft *FlagType) SetObsoleteBit()    { *ft = *ft | ObsoleteBit }
+func (ft *FlagType) SetHiddenBit()      { *ft = *ft | HiddenBit }
+func (ft *FlagType) SetChangedBit()     { *ft = *ft | ChangedBit }
+func (ft *FlagType) SetCounterBit()     { *ft = *ft | CounterBit }
+func (ft *FlagType) SetRepeatableBit()  { *ft = *ft | RepeatableBit }
 
 type Flag struct {
 	Value         interface{}
 	Label         string
 	Letter        rune
-	TypeTag       string
+	Type          FlagType
+	ValueTypeTag  string
 	Default       interface{}
-	LabelAliases  []*LabelAlias
-	LetterAliases []*LetterAlias
-	IsHidden      bool
-	IsRepeatable  bool
+	AliasFor      *Flag
 	FileFlag      *Flag
 	Usage         string
 	Callback      CallbackFunction
 	ParentFlagSet *FlagSet
-	Changed       bool
 }
 
 func (f *Flag) Set(value interface{}) error {
@@ -220,7 +245,7 @@ func (f *Flag) Set(value interface{}) error {
 		return err
 	}
 
-	f.Failf("type %T not handled in flag.Set() for flag '%s'", f.Label)
+	f.Failf("type %T not handled in flag.Set() for flag '%s'", value, f.Label)
 	return &FlagError{"type not handled in flag.Set()"}
 }
 
@@ -255,8 +280,8 @@ func (f *Flag) GetDefaultDescription() string {
 }
 
 func (f *Flag) GetTypeTag() string {
-	if len(f.TypeTag) > 0 {
-		return f.TypeTag
+	if len(f.ValueTypeTag) > 0 {
+		return f.ValueTypeTag
 	}
 	if f.GetDefaultLen() > 1 {
 		return "ENUM"
@@ -305,29 +330,20 @@ func WithShortcut(letter rune) FlagOption {
 	}
 }
 
-func WithAlias(alias interface{}, obsolete bool) FlagOption {
-	if label, ok := alias.(string); ok {
-		if IsValidLabel(label) {
-			return func(f *Flag) {
-				f.LabelAliases = append(f.LabelAliases, &LabelAlias{
-					Label:    label,
-					Obsolete: obsolete,
-				})
-			}
-		}
-	}
-	if letter, ok := alias.(rune); ok {
-		if IsValidShortcut(letter) {
-			return func(f *Flag) {
-				f.LetterAliases = append(f.LetterAliases, &LetterAlias{
-					Letter:   letter,
-					Obsolete: obsolete,
-				})
-			}
-		}
-	}
+func WithAlias(label string, letter rune, obsolete bool) FlagOption {
 	return func(f *Flag) {
-		return
+		flag := f.ParentFlagSet.LookupLabel(label)
+		if flag != nil {
+			f.Failf("long flag already exists for alias '%s'", label)
+			panic("alias cannot be created")
+		}
+		flag = f.ParentFlagSet.LookupShortcut(letter)
+		if flag != nil {
+			f.Failf("short flag already exists for alias '%c'", letter)
+			panic("alias cannot be created")
+		}
+		flag = NewAlias(label, letter, f)
+		f.ParentFlagSet.AddFlag(f)
 	}
 }
 
@@ -341,15 +357,19 @@ func WithDefault(def interface{}) FlagOption {
 	}
 }
 
-func WithArgument(repeatable bool) FlagOption {
+func AsCounter() FlagOption {
 	return func(f *Flag) {
-		f.IsRepeatable = repeatable
+		if types.IsNum(f.Value) {
+			f.Type.SetCounterBit()
+		} else {
+			f.Failf("cannot use non-numeric flag '%s' as counter", f.Label)
+		}
 	}
 }
 
 func WithTypeTag(tag string) FlagOption {
 	return func(f *Flag) {
-		f.TypeTag = tag
+		f.ValueTypeTag = tag
 	}
 }
 
@@ -372,25 +392,61 @@ func NewFlag(value interface{}, label string, usage string, opts ...FlagOption) 
 		}
 	}
 	f := &Flag{
-		Value:         value,
-		Label:         label,
-		LabelAliases:  []*LabelAlias{},
-		Letter:        rune(0),
-		LetterAliases: []*LetterAlias{},
-		TypeTag:       "",
-		Default:       nil,
-		IsHidden:      false,
-		IsRepeatable:  types.IsSlice(value),
-		FileFlag:      nil,
-		Usage:         usage,
-		Callback:      nil,
-		ParentFlagSet: nil,
-		Changed:       false,
+		Value:  value,
+		Label:  label,
+		Letter: rune(0),
+		Usage:  usage,
+	}
+	if types.IsSlice(value) {
+		f.Type.SetRepeatableBit()
 	}
 	for _, opt := range opts {
 		opt(f)
 	}
 	return f
+}
+
+func NewAlias(label string, letter rune, target *Flag) *Flag {
+	flagType := ClearFlagType
+	if len(label) > 1 && IsValidLabel(label) {
+		flagType.SetLabelAliasBit()
+	}
+	if letter != rune(0) && IsValidShortcut(letter) {
+		flagType.SetLetterAliasBit()
+	}
+	if !flagType.TstAliasBits() {
+		return nil
+	}
+
+	return &Flag{
+		Value:    nil, // stored in target
+		Label:    label,
+		Letter:   letter,
+		AliasFor: target,
+		Type:     flagType,
+	}
+}
+
+func (f *Flag) IsLabelAlias() bool {
+	return f.Type.TstLabelAliasBit()
+}
+func (f *Flag) IsShortcutAlias() bool {
+	return f.Type.TstLetterAliasBit()
+}
+func (f *Flag) IsAlias() bool {
+	return f.Type.TstAliasBits()
+}
+func (f *Flag) IsHidden() bool {
+	return f.Type.TstHiddenBit()
+}
+func (f *Flag) IsChanged() bool {
+	return f.Type.TstChangedBit()
+}
+func (f *Flag) IsCounter() bool {
+	return f.Type.TstCounterBit()
+}
+func (f *Flag) IsRepeatable() bool {
+	return f.Type.TstRepeatableBit()
 }
 
 // Only allow letters and numbers as shortcut letters
