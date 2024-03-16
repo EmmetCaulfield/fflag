@@ -150,11 +150,15 @@ import (
 	"github.com/EmmetCaulfield/fflag/pkg/types"
 )
 
-type CallbackFunction func(value interface{}, label string, arg string, pos int)
-
-type SetValueIx interface {
-	Set(label string, arg string, pos int)
+type FlagError struct {
+	s string
 }
+
+func (fe *FlagError) Error() string {
+	return fe.s
+}
+
+type CallbackFunction func(value interface{}, label string, arg string, pos int)
 
 type LabelAlias struct {
 	Label    string
@@ -184,7 +188,39 @@ type Flag struct {
 }
 
 func (f *Flag) Set(value interface{}) error {
-	return nil
+	if setter, ok := f.Value.(types.SetValue); ok {
+		if str, ok := value.(string); ok {
+			return setter.Set(str)
+		}
+		f.ParentFlagSet.Failf("Cannot pass non-string to SetValue.Set(string) in flag.Set() for flag '%s'", f.Label)
+		return &FlagError{"failed to pass non-string to SetValue.Set()"}
+	}
+
+	if value == nil {
+		var boolp *bool
+		var ok, def bool
+		if boolp, ok = f.Value.(*bool); !ok {
+			f.ParentFlagSet.Failf("flag.Set(nil) called for non-boolean flag '%s' of type %T", f.Label, f.Value)
+			return &FlagError{"cannot set nil value for non-bool"}
+		}
+		// If a default was given, use it, otherwise the zero
+		// value (`false`) returned by the type assertion is the
+		// default we want in the absence of a stipulated default
+		def, _ = f.Default.(bool)
+		*boolp = !def
+		return nil
+	}
+
+	if str, ok := value.(string); ok {
+		err := types.FromStr(f.Value, str)
+		if err != nil {
+			f.ParentFlagSet.Failf("Failed to convert '%s' to %T: %v", str, f.Value, err)
+		}
+		return err
+	}
+
+	f.ParentFlagSet.Failf("Type %T not handled in flag.Set() for flag '%s'", f.Label)
+	return &FlagError{"type not handled in flag.Set()"}
 }
 
 func (f *Flag) GetDefaultLen() int {
@@ -330,7 +366,7 @@ func NewFlag(value interface{}, label string, usage string, opts ...FlagOption) 
 		return nil
 	}
 	if types.IsOtherT(value) {
-		if _, ok := value.(SetValueIx); !ok {
+		if _, ok := value.(types.SetValue); !ok {
 			return nil
 		}
 	}

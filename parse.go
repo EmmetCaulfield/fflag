@@ -185,18 +185,19 @@ func (am *ArgMask) IsNonFlag() bool {
 	return false
 }
 
-func parseSingleArg(arg string) ([]string, string, ArgMask) {
-	argType := AMClear
+func parseSingleArg(arg string) (flags []string, param string, argType ArgMask) {
 	// minimum length flag is 2 (e.g. "-x")
 	if len(arg) < 2 {
 		// argType.ClrLongBit()
 		if arg == "-" {
 			argType.SetHyphenBit()
 			// argType.ClrFlagBit()
-			return []string{arg}, argType
 		}
-		return []string{arg}, argType
+		// flags = []string{}
+		param = arg
+		return
 	}
+
 	var flag string
 	if arg[0:2] == "--" {
 		// A long flag
@@ -207,45 +208,55 @@ func parseSingleArg(arg string) ([]string, string, ArgMask) {
 		argType.ClrLongBit()
 		flag = arg[1:len(arg)]
 	} else {
+		// Not a flag, must be a param
 		// argType.ClrFlagBit()
-		return []string{arg}, nil, argType
+		// flags = []string{}
+		param = arg
+		return
 	}
 
+	// If we get here, we have a flag or cluster of flags (stripped of
+	// leading hyphens) in `flag`, potentially with a parameter
 	if len(flag) == 0 {
 		// There's nothing after the flag start indicator
 		argType.SetHyphenBit()
 		if argType.TstLongBit() {
-			return []string{"--"}, nil, argType
+			// flags = []string{}
+			param = "--"
+			return
 		}
 		panic("impossible condition")
 	}
+
 	argType.SetFlagBit()
 	parts := strings.SplitN(flag, "=", 2)
-	if len(parts) == 1 {
+	if len(parts) == 2 {
+		argType.SetParamBit()
+		flag = parts[0]
+		param = parts[1]
+	} else {
 		argType.ClrParamBit()
-		if argType.IsLongFlag() {
-			return []string{flag}, nil, argType
-		}
-		// It could be a single short flag or a cluster of short flags
-		argType.ClrLongBit()
-		if len(flag) == 1 {
-			// Not a cluster
-			return []string{flag}, nil, argType
-		}
-		argType.SetClusterBit()
-		return strings.Split(flag, ""), nil, argType
 	}
-	argType.SetParamBit()
+
 	if argType.IsLongFlag() {
-		return parts[0], parts[1], argType
+		// We have a single long flag
+		flags = []string{flag}
+		return
 	}
-	// It could be a single short flag or a cluster
-	if len(parts[0]) == 1 {
-		argType.ClrClusterBit()
-		return parts[0], parts[1], argType
+
+	// It could be a single short flag or a cluster of short flags
+	argType.ClrLongBit()
+	if len(flag) == 1 {
+		// We have a single short flag
+		flags = []string{flag}
+		return
 	}
+
+	// We have a cluster of short flags
 	argType.SetClusterBit()
-	return strings.Split(flag, ""), parts[1], argType
+	flags = strings.Split(flag, "")
+
+	return
 }
 
 func (fs *FlagSet) parse() error {
@@ -255,23 +266,28 @@ func (fs *FlagSet) parse() error {
 		fmt.Printf("%02d> '%s' ", i, arg)
 		flags, param, argType := parseSingleArg(arg)
 		if !argType.IsFlag() {
-			fs.OutputArgs.Push(arg)
+			fs.OutputArgs.Push(param)
 			continue
 		}
 		var flag *Flag = nil
 		if argType.IsCluster() {
-			for i, s := range parts[:len(parts)-1] {
+			for _, s := range flags[:len(flags)-1] {
 				flag = fs.Lookup(s)
 				if flag == nil {
 					fs.Failf("short flag '%s' in cluster '%s' is not defined", s, arg)
+					continue
 				}
-				flag.Set("")
+				err = flag.Set(nil)
+				if err != nil {
+					fs.Failf("short flag '%s' in cluster '%s' is not defined", s, arg)
+					continue
+				}
 			}
-			flag = fs.Lookup(parts[len(parts)-1])
+			flag = fs.Lookup(flags[len(flags)-1])
 		} else {
-			flag = fs.Lookup(parts[0])
+			flag = fs.Lookup(flags[0])
 		}
-		fmt.Printf("%s -> %s (%016b)\n", parts, param, &argType)
+		fmt.Printf("%s -> %s (%016b)\n", flags, param, argType)
 		i++
 	}
 	if err != nil {
