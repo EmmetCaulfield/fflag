@@ -224,3 +224,22 @@ func (fs *FlagSet) Failf(format string, args ...interface{}) {
 func (fs *FlagSet) Infof(format string, args ...interface{}) {
 	fmt.Fprintf(fs.Output, "INFO: " + format + "\n", args...)
 }
+
+
+func (fs *FlagSet) FlagStringMaxLen() int {
+	maxLen := 0
+	for _, f := range fs.FlagList {
+		maxLen = max(maxLen, len(f.FlagString()))
+	}
+	return maxLen
+}
+
+func (fs *FlagSet) AlignedFlagDescriptions(pre, mid, post string) []string {
+	fstrs := []string{}
+	maxl := fs.FlagStringMaxLen()
+	for _, f := range fs.FlagList {
+		s := fmt.Sprintf("%s%-*s%s%s%s", pre, maxl, f.FlagString(), mid, f.DescString(), post)
+		fstrs = append(fstrs, s)
+	}
+	return fstrs
+}

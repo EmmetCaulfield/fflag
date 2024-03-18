@@ -287,7 +287,7 @@ func (fs *FlagSet) parse() error {
 		} else {
 			flag = fs.Lookup(flags[0])
 		}
-		fmt.Printf("%s -> %s (%016b)\n", flags, param, argType)
+		// fmt.Printf("%s -> %s (%016b)\n", flags, param, argType)
 		i++
 	}
 	if err != nil {
