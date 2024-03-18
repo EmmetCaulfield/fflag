@@ -160,43 +160,47 @@ func (fe *FlagError) Error() string {
 
 type CallbackFunction func(value interface{}, label string, arg string, pos int)
 
-type FlagType int8
+type FlagType uint8
 
 const (
-	ClearFlagType  FlagType = 0b00000000
-	LabelAliasBit           = 0b00000001
-	LetterAliasBit          = 0b00000010
-	ObsoleteBit             = 0b00000100
-	HiddenBit               = 0b00001000
-	ChangedBit              = 0b00010000
-	CounterBit              = 0b00100000
-	RepeatableBit           = 0b01000000
+	ClearFlagType     FlagType = 0b00000000
+	LabelAliasBit     FlagType = 0b00000001
+	LetterAliasBit    FlagType = 0b00000010
+	ObsoleteBit       FlagType = 0b00000100
+	NotImplementedBit FlagType = 0b00001000
+	HiddenBit         FlagType = 0b00010000
+	ChangedBit        FlagType = 0b00100000
+	CounterBit        FlagType = 0b01000000
+	RepeatableBit     FlagType = 0b10000000
 )
 
-func (ft *FlagType) TstLabelAliasBit() bool  { return *ft|LabelAliasBit != 0 }
-func (ft *FlagType) TstLetterAliasBit() bool { return *ft|LetterAliasBit != 0 }
-func (ft *FlagType) TstObsoleteBit() bool    { return *ft|ObsoleteBit != 0 }
-func (ft *FlagType) TstHiddenBit() bool      { return *ft|HiddenBit != 0 }
-func (ft *FlagType) TstChangedBit() bool     { return *ft|ChangedBit != 0 }
-func (ft *FlagType) TstCounterBit() bool     { return *ft|CounterBit != 0 }
-func (ft *FlagType) TstRepeatableBit() bool  { return *ft|RepeatableBit != 0 }
-func (ft *FlagType) TstAliasBits() bool      { return (*ft|LetterAliasBit)|(*ft|LabelAliasBit) != 0 }
+func (ft *FlagType) TstLabelAliasBit() bool     { return *ft|LabelAliasBit != 0 }
+func (ft *FlagType) TstLetterAliasBit() bool    { return *ft|LetterAliasBit != 0 }
+func (ft *FlagType) TstObsoleteBit() bool       { return *ft|ObsoleteBit != 0 }
+func (ft *FlagType) TstNotImplementedBit() bool { return *ft|NotImplementedBit != 0 }
+func (ft *FlagType) TstHiddenBit() bool         { return *ft|HiddenBit != 0 }
+func (ft *FlagType) TstChangedBit() bool        { return *ft|ChangedBit != 0 }
+func (ft *FlagType) TstCounterBit() bool        { return *ft|CounterBit != 0 }
+func (ft *FlagType) TstRepeatableBit() bool     { return *ft|RepeatableBit != 0 }
+func (ft *FlagType) TstAliasBits() bool         { return (*ft|LetterAliasBit)|(*ft|LabelAliasBit) != 0 }
 
-func (ft *FlagType) ClrLabelAliasBit()  { *ft = *ft & ^LabelAliasBit }
-func (ft *FlagType) ClrLetterAliasBit() { *ft = *ft & ^LetterAliasBit }
-func (ft *FlagType) ClrObsoleteBit()    { *ft = *ft & ^ObsoleteBit }
-func (ft *FlagType) ClrHiddenBit()      { *ft = *ft & ^HiddenBit }
-func (ft *FlagType) ClrChangedBit()     { *ft = *ft & ^ChangedBit }
-func (ft *FlagType) ClrCounterBit()     { *ft = *ft & ^CounterBit }
-func (ft *FlagType) ClrRepeatableBit()  { *ft = *ft & ^RepeatableBit }
+func (ft *FlagType) ClrLabelAliasBit()     { *ft = *ft & ^LabelAliasBit }
+func (ft *FlagType) ClrLetterAliasBit()    { *ft = *ft & ^LetterAliasBit }
+func (ft *FlagType) ClrObsoleteBit()       { *ft = *ft & ^ObsoleteBit }
+func (ft *FlagType) ClrNotImplementedBit() { *ft = *ft & ^NotImplementedBit }
+func (ft *FlagType) ClrHiddenBit()         { *ft = *ft & ^HiddenBit }
+func (ft *FlagType) ClrChangedBit()        { *ft = *ft & ^ChangedBit }
+func (ft *FlagType) ClrCounterBit()        { *ft = *ft & ^CounterBit }
+func (ft *FlagType) ClrRepeatableBit()     { *ft = *ft & ^RepeatableBit }
 
-func (ft *FlagType) SetLabelAliasBit()  { *ft = *ft | LabelAliasBit }
-func (ft *FlagType) SetLetterAliasBit() { *ft = *ft | LetterAliasBit }
-func (ft *FlagType) SetObsoleteBit()    { *ft = *ft | ObsoleteBit }
-func (ft *FlagType) SetHiddenBit()      { *ft = *ft | HiddenBit }
-func (ft *FlagType) SetChangedBit()     { *ft = *ft | ChangedBit }
-func (ft *FlagType) SetCounterBit()     { *ft = *ft | CounterBit }
-func (ft *FlagType) SetRepeatableBit()  { *ft = *ft | RepeatableBit }
+func (ft *FlagType) SetLabelAliasBit()     { *ft = *ft | LabelAliasBit }
+func (ft *FlagType) SetLetterAliasBit()    { *ft = *ft | LetterAliasBit }
+func (ft *FlagType) SetObsoleteBit()       { *ft = *ft | ObsoleteBit }
+func (ft *FlagType) SetNotImplementedBit() { *ft = *ft | NotImplementedBit }
+func (ft *FlagType) SetHiddenBit()         { *ft = *ft | HiddenBit }
+func (ft *FlagType) SetChangedBit()        { *ft = *ft | ChangedBit }
+func (ft *FlagType) SetCounterBit()        { *ft = *ft | CounterBit }
+func (ft *FlagType) SetRepeatableBit()     { *ft = *ft | RepeatableBit }
 
 type Flag struct {
 	Value         interface{}
@@ -222,10 +226,15 @@ func (f *Flag) Set(value interface{}) error {
 		return &FlagError{"failed to pass non-string to SetValue.Set()"}
 	}
 
+	valix := f.Value
+	if valix == nil && f.AliasFor != nil {
+		valix = f.AliasFor.Value
+	}
+
 	if value == nil {
 		var boolp *bool
 		var ok, def bool
-		if boolp, ok = f.Value.(*bool); !ok {
+		if boolp, ok = valix.(*bool); !ok {
 			f.Failf("flag.Set(nil) called for non-boolean flag '%s' of type %T", f.Label, f.Value)
 			return &FlagError{"cannot set nil value for non-bool"}
 		}
@@ -238,9 +247,9 @@ func (f *Flag) Set(value interface{}) error {
 	}
 
 	if str, ok := value.(string); ok {
-		err := types.FromStr(f.Value, str)
+		err := types.FromStr(valix, str)
 		if err != nil {
-			f.Failf("failed to convert '%s' to %T: %v", str, f.Value, err)
+			f.Failf("failed to convert '%s' to %T: %v", str, valix, err)
 		}
 		return err
 	}
@@ -250,10 +259,16 @@ func (f *Flag) Set(value interface{}) error {
 }
 
 func (f *Flag) GetDefaultLen() int {
+	if f.AliasFor != nil {
+		f = f.AliasFor
+	}
 	return types.SliceLen(f.Default)
 }
 
 func (f *Flag) GetDefault() interface{} {
+	if f.AliasFor != nil {
+		f = f.AliasFor
+	}
 	if f.GetDefaultLen() > 0 {
 		return types.ItemAt(f.Default, 0)
 	}
@@ -261,6 +276,7 @@ func (f *Flag) GetDefault() interface{} {
 }
 
 func (f *Flag) GetDefaultDescription() string {
+	// TODO(emmet): handle aliases
 	buf := &bytes.Buffer{}
 	if f.Default == nil {
 		return ""
@@ -280,6 +296,9 @@ func (f *Flag) GetDefaultDescription() string {
 }
 
 func (f *Flag) GetTypeTag() string {
+	if f.AliasFor != nil {
+		f = f.AliasFor
+	}
 	if len(f.ValueTypeTag) > 0 {
 		return f.ValueTypeTag
 	}
@@ -322,7 +341,29 @@ func (f *Flag) FlagString() string {
 	return buf.String()
 }
 
+func (f *Flag) DescString() string {
+	buf := &bytes.Buffer{}
+	if f.Type.TstAliasBits() && f.AliasFor != nil {
+		if f.Type.TstObsoleteBit() {
+			buf.WriteString("obsolete ")
+		}
+		buf.WriteString("synonym for ")
+		buf.WriteString(f.AliasFor.FlagString())
+	}
+	// TODO(emmet): handle non-aliases
+	return buf.String()
+}
+
 type FlagOption = func(f *Flag)
+
+func WithParent(fs *FlagSet) FlagOption {
+	return func(f *Flag) {
+		if f.ParentFlagSet != nil {
+			panic("parent flagset already set")
+		}
+		f.ParentFlagSet = fs
+	}
+}
 
 func WithShortcut(letter rune) FlagOption {
 	return func(f *Flag) {
@@ -332,7 +373,8 @@ func WithShortcut(letter rune) FlagOption {
 
 func WithAlias(label string, letter rune, obsolete bool) FlagOption {
 	return func(f *Flag) {
-		flag := f.ParentFlagSet.LookupLabel(label)
+		var flag *Flag = nil
+		flag = f.ParentFlagSet.LookupLabel(label)
 		if flag != nil {
 			f.Failf("long flag already exists for alias '%s'", label)
 			panic("alias cannot be created")
@@ -342,8 +384,20 @@ func WithAlias(label string, letter rune, obsolete bool) FlagOption {
 			f.Failf("short flag already exists for alias '%c'", letter)
 			panic("alias cannot be created")
 		}
-		flag = NewAlias(label, letter, f)
-		f.ParentFlagSet.AddFlag(f)
+		flag = f.NewAlias(label, letter)
+		if flag == nil {
+			f.Failf("error creating alias -%c/--%s for -%c/--%s", label, letter, f.Label, f.Letter)
+			panic("alias cannot be created")
+		}
+		if obsolete {
+			flag.Type.SetObsoleteBit()
+		} else {
+			flag.Type.ClrObsoleteBit()
+		}
+		err := f.ParentFlagSet.AddFlag(flag)
+		if err != nil {
+			f.Failf("Error adding alias: %v", err)
+		}
 	}
 }
 
@@ -364,6 +418,28 @@ func AsCounter() FlagOption {
 		} else {
 			f.Failf("cannot use non-numeric flag '%s' as counter", f.Label)
 		}
+	}
+}
+
+// We distinguish "not implemented" from "obsolete" or "deprecated"
+// for those cases where end users might reasonably expect a
+// particular option to be implemented, but it hasn't been for some
+// reason other than deprecation/obsolesence.
+func NotImplemented() FlagOption {
+	return func(f *Flag) {
+		f.Type.SetNotImplementedBit()
+	}
+}
+
+func Deprecated() FlagOption {
+	return func(f *Flag) {
+		f.Type.SetObsoleteBit()
+	}
+}
+
+func Obsolete() FlagOption {
+	return func(f *Flag) {
+		f.Type.SetObsoleteBit()
 	}
 }
 
@@ -406,8 +482,8 @@ func NewFlag(value interface{}, label string, usage string, opts ...FlagOption) 
 	return f
 }
 
-func NewAlias(label string, letter rune, target *Flag) *Flag {
-	flagType := ClearFlagType
+func (f *Flag) NewAlias(label string, letter rune) *Flag {
+	flagType := f.Type
 	if len(label) > 1 && IsValidLabel(label) {
 		flagType.SetLabelAliasBit()
 	}
@@ -419,11 +495,12 @@ func NewAlias(label string, letter rune, target *Flag) *Flag {
 	}
 
 	return &Flag{
-		Value:    nil, // stored in target
-		Label:    label,
-		Letter:   letter,
-		AliasFor: target,
-		Type:     flagType,
+		Value:         nil, // stored in target
+		Label:         label,
+		Letter:        letter,
+		AliasFor:      f,
+		Type:          flagType,
+		ParentFlagSet: f.ParentFlagSet,
 	}
 }
 
@@ -480,4 +557,11 @@ func (f *Flag) Failf(format string, args ...interface{}) {
 		panic("parent flagset not set")
 	}
 	f.ParentFlagSet.Failf(format, args...)
+}
+
+func (f *Flag) Infof(format string, args ...interface{}) {
+	if f.ParentFlagSet == nil {
+		panic("parent flagset not set")
+	}
+	f.ParentFlagSet.Infof(format, args...)
 }

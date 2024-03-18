@@ -105,6 +105,12 @@ func (fs *FlagSet) HasFlags() bool {
 }
 
 func (fs *FlagSet) LookupLabel(label string) *Flag {
+	if len(label) == 0 {
+		return nil
+	}
+	if len(label) == 1 {
+		return fs.LookupShortcut(rune(label[0]))
+	}
 	if f, ok := fs.LabelDict[label]; ok {
 		return f
 	}
@@ -114,6 +120,9 @@ func (fs *FlagSet) LookupLabel(label string) *Flag {
 // LookupShortcut returns the Flag structure of the shortcut flag,
 // returning nil if none exists.
 func (fs *FlagSet) LookupShortcut(r rune) *Flag {
+	if r == rune(0) {
+		return nil
+	}
 	if f, ok := fs.LetterDict[r]; ok {
 		return f
 	}
@@ -122,18 +131,9 @@ func (fs *FlagSet) LookupShortcut(r rune) *Flag {
 
 func (fs *FlagSet) Lookup(item interface{}) *Flag {
 	if label, ok := item.(string); ok {
-		if len(label) == 0 {
-			return nil
-		}
-		if len(label) == 1 {
-			return fs.LookupShortcut(rune(label[0]))
-		}
 		return fs.LookupLabel(label)
 	}
 	if letter, ok := item.(rune); ok {
-		if letter == rune(0) {
-			return nil
-		}
 		return fs.LookupShortcut(letter)
 	}
 	return nil
@@ -162,7 +162,7 @@ func (fs *FlagSet) AddFlag(f *Flag) error {
 		}
 		f.Letter = rune(0)
 	}
-
+	fs.Infof("Adding: %s, %c", f.Label, f.Letter)
 	if len(f.Label) > 0 {
 		if g, ok := fs.LabelDict[f.Label]; ok {
 			return fmt.Errorf("shortcut '%c' already used for '%s'", f.Letter, g.Label)		
@@ -175,14 +175,18 @@ func (fs *FlagSet) AddFlag(f *Flag) error {
 		}
 		fs.LetterDict[f.Letter] = f
 	}
+
 	fs.FlagList = append(fs.FlagList, f)
 	fs.IsSorted = false
-	f.ParentFlagSet = fs
 	return nil
 }
 
 func (fs *FlagSet) Var(value interface{}, label string, usage string, opts ...FlagOption) {
-	f := NewFlag(value, label, usage, opts...)
+	// We need to set the parent flagset early because some of the
+	// functions downstream of NewFlag() check that the flag doesn't
+	// already exist in the parent flagset
+	options := append([]FlagOption{WithParent(fs)}, opts...)
+	f := NewFlag(value, label, usage, options...)
 	_ = fs.AddFlag(f)
 }
 
@@ -190,9 +194,23 @@ func Var(value interface{}, label string, usage string, opts ...FlagOption) {
 	CommandLine.Var(value, label, usage, opts...)
 }
 
+func (fs *FlagSet) Dump() {
+	fmt.Fprintf(fs.Output, "FlagList: %+v\n", fs.FlagList)
+	fmt.Fprintf(fs.Output, "LabelDict: %+v\n", fs.LabelDict)
+	fmt.Fprintf(fs.Output, "LetterDict: %+v\n", fs.LetterDict)
+	fmt.Fprintf(fs.Output, "IsSorted: %+v\n", fs.IsSorted)
+	fmt.Fprintf(fs.Output, "Output: %+v\n", fs.Output)
+	fmt.Fprintf(fs.Output, "IgnoreDoubleDash: %+v\n", fs.IgnoreDoubleDash)
+	fmt.Fprintf(fs.Output, "InputArgs: %+v\n", fs.InputArgs)
+	fmt.Fprintf(fs.Output, "OutputArgs: %+v\n", fs.OutputArgs)
+	fmt.Fprintf(fs.Output, "OnFail: %+v\n", fs.OnFail)
+	fmt.Fprintf(fs.Output, "FailExitCode: %+v\n", fs.FailExitCode)
+}
+
 func (fs *FlagSet) Failf(format string, args ...interface{}) {
 	if !fs.OnFail.TstSilentBit() {
 		fmt.Fprintf(fs.Output, "ERROR: " + format + "\n", args...)
+		fs.Dump()
 	}
 	if fs.OnFail.TstContinueBit() {
 		return
@@ -201,4 +219,8 @@ func (fs *FlagSet) Failf(format string, args ...interface{}) {
 		panic(fmt.Sprintf(format, args...))
 	}
 	os.Exit(fs.FailExitCode)
+}
+
+func (fs *FlagSet) Infof(format string, args ...interface{}) {
+	fmt.Fprintf(fs.Output, "INFO: " + format + "\n", args...)
 }

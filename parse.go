@@ -279,7 +279,7 @@ func (fs *FlagSet) parse() error {
 				}
 				err = flag.Set(nil)
 				if err != nil {
-					fs.Failf("short flag '%s' in cluster '%s' is not defined", s, arg)
+					fs.Failf("failed to set short flag '%s' in cluster '%s'", s, arg)
 					continue
 				}
 			}
