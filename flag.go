@@ -174,15 +174,15 @@ const (
 	RepeatableBit     FlagType = 0b10000000
 )
 
-func (ft *FlagType) TstLabelAliasBit() bool     { return *ft|LabelAliasBit != 0 }
-func (ft *FlagType) TstLetterAliasBit() bool    { return *ft|LetterAliasBit != 0 }
-func (ft *FlagType) TstObsoleteBit() bool       { return *ft|ObsoleteBit != 0 }
-func (ft *FlagType) TstNotImplementedBit() bool { return *ft|NotImplementedBit != 0 }
-func (ft *FlagType) TstHiddenBit() bool         { return *ft|HiddenBit != 0 }
-func (ft *FlagType) TstChangedBit() bool        { return *ft|ChangedBit != 0 }
-func (ft *FlagType) TstCounterBit() bool        { return *ft|CounterBit != 0 }
-func (ft *FlagType) TstRepeatableBit() bool     { return *ft|RepeatableBit != 0 }
-func (ft *FlagType) TstAliasBits() bool         { return (*ft|LetterAliasBit)|(*ft|LabelAliasBit) != 0 }
+func (ft *FlagType) TstLabelAliasBit() bool     { return *ft&LabelAliasBit != 0 }
+func (ft *FlagType) TstLetterAliasBit() bool    { return *ft&LetterAliasBit != 0 }
+func (ft *FlagType) TstObsoleteBit() bool       { return *ft&ObsoleteBit != 0 }
+func (ft *FlagType) TstNotImplementedBit() bool { return *ft&NotImplementedBit != 0 }
+func (ft *FlagType) TstHiddenBit() bool         { return *ft&HiddenBit != 0 }
+func (ft *FlagType) TstChangedBit() bool        { return *ft&ChangedBit != 0 }
+func (ft *FlagType) TstCounterBit() bool        { return *ft&CounterBit != 0 }
+func (ft *FlagType) TstRepeatableBit() bool     { return *ft&RepeatableBit != 0 }
+func (ft *FlagType) TstAliasBits() bool         { return (*ft&LetterAliasBit)|(*ft&LabelAliasBit) != 0 }
 
 func (ft *FlagType) ClrLabelAliasBit()     { *ft = *ft & ^LabelAliasBit }
 func (ft *FlagType) ClrLetterAliasBit()    { *ft = *ft & ^LetterAliasBit }
@@ -323,12 +323,12 @@ func (f *Flag) GetTypeTag() string {
 func (f *Flag) FlagString() string {
 	buf := &bytes.Buffer{}
 	if f.Letter == rune(0) {
-		buf.WriteString("    ")
+		buf.WriteString(`    `)
 	} else {
 		buf.WriteRune('-')
 		buf.WriteRune(f.Letter)
 		if len(f.Label) > 1 {
-			buf.WriteString(", ")
+			buf.WriteString(`, `)
 		}
 	}
 	if len(f.Label) > 1 {
@@ -342,16 +342,20 @@ func (f *Flag) FlagString() string {
 }
 
 func (f *Flag) DescString() string {
-	buf := &bytes.Buffer{}
 	if f.Type.TstAliasBits() && f.AliasFor != nil {
+		buf := &bytes.Buffer{}
 		if f.Type.TstObsoleteBit() {
 			buf.WriteString("obsolete ")
 		}
 		buf.WriteString("synonym for ")
 		buf.WriteString(f.AliasFor.FlagString())
+		return buf.String()
+	}
+	if f.Type.TstNotImplementedBit() {
+		return "not implemented"
 	}
 	// TODO(emmet): handle non-aliases
-	return buf.String()
+	return f.Usage
 }
 
 type FlagOption = func(f *Flag)
