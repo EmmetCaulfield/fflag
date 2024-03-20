@@ -341,7 +341,7 @@ func (f *Flag) GetTypeTag() string {
 // utilities i.e., where both long and short versions are defined,
 // the short version first, followed by a comma, followed by long
 // version, e.g. "-x, --example", otherwise just the version that's
-// defined.
+// defined, e.g. "-x" or "--example"
 func (f *Flag) FlagString() string {
 	buf := &bytes.Buffer{}
 	if f.Letter == rune(0) {
