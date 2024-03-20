@@ -213,7 +213,14 @@ type Flag struct {
 	FileFlag      *Flag
 	Usage         string
 	Callback      CallbackFunction
-	ParentFlagSet *FlagSet
+	parentFlagSet *FlagSet
+}
+
+func (f *Flag) ParentFlagSet() *FlagSet {
+	if f.parentFlagSet == nil {
+		return CommandLine
+	}
+	return f.parentFlagSet
 }
 
 func (f *Flag) Set(value interface{}) error {
@@ -254,8 +261,18 @@ func (f *Flag) Set(value interface{}) error {
 		return err
 	}
 
-	f.Failf("type %T not handled in flag.Set() for flag '%s'", value, f.Label)
-	return &FlagError{"type not handled in flag.Set()"}
+	// Last-ditch attempt: round-trip the value
+	str := types.StrConv(value)
+	err := types.FromStr(valix, str)
+	if err != nil {
+		f.Failf("failed to convert '%s' to %T: %v", str, valix, err)
+		return err
+	}
+	return nil
+}
+
+func (f *Flag) GetValue() string {
+	return types.StrConv(f.Value)
 }
 
 func (f *Flag) GetDefaultLen() int {
@@ -320,6 +337,11 @@ func (f *Flag) GetTypeTag() string {
 	return ""
 }
 
+// Returns short and long version of flags in the format of GNU
+// utilities i.e., where both long and short versions are defined,
+// the short version first, followed by a comma, followed by long
+// version, e.g. "-x, --example", otherwise just the version that's
+// defined.
 func (f *Flag) FlagString() string {
 	buf := &bytes.Buffer{}
 	if f.Letter == rune(0) {
@@ -362,10 +384,10 @@ type FlagOption = func(f *Flag)
 
 func WithParent(fs *FlagSet) FlagOption {
 	return func(f *Flag) {
-		if f.ParentFlagSet != nil {
+		if f.parentFlagSet != nil {
 			panic("parent flagset already set")
 		}
-		f.ParentFlagSet = fs
+		f.parentFlagSet = fs
 	}
 }
 
@@ -378,19 +400,19 @@ func WithShortcut(letter rune) FlagOption {
 func WithAlias(label string, letter rune, obsolete bool) FlagOption {
 	return func(f *Flag) {
 		var flag *Flag = nil
-		flag = f.ParentFlagSet.LookupLabel(label)
+		flag = f.ParentFlagSet().LookupLabel(label)
 		if flag != nil {
 			f.Failf("long flag already exists for alias '%s'", label)
 			panic("alias cannot be created")
 		}
-		flag = f.ParentFlagSet.LookupShortcut(letter)
+		flag = f.ParentFlagSet().LookupShortcut(letter)
 		if flag != nil {
 			f.Failf("short flag already exists for alias '%c'", letter)
 			panic("alias cannot be created")
 		}
 		flag = f.NewAlias(label, letter)
 		if flag == nil {
-			f.Failf("error creating alias -%c/--%s for -%c/--%s", label, letter, f.Label, f.Letter)
+			f.Failf("error creating alias -%c/--%s for -%c/--%s", letter, label, f.Letter, f.Label)
 			panic("alias cannot be created")
 		}
 		if obsolete {
@@ -398,7 +420,7 @@ func WithAlias(label string, letter rune, obsolete bool) FlagOption {
 		} else {
 			flag.Type.ClrObsoleteBit()
 		}
-		err := f.ParentFlagSet.AddFlag(flag)
+		err := f.ParentFlagSet().AddFlag(flag)
 		if err != nil {
 			f.Failf("Error adding alias: %v", err)
 		}
@@ -407,10 +429,10 @@ func WithAlias(label string, letter rune, obsolete bool) FlagOption {
 
 func WithDefault(def interface{}) FlagOption {
 	return func(f *Flag) {
-		if types.IsPointerTo(f.Value, def) {
-			f.Default = def
-		} else {
-			f.Default = nil
+		f.Default = def
+		err := types.FromStr(f.Value, types.StrConv(def))
+		if err != nil {
+			f.Failf("failed to set default value for '%s'", f.Label)
 		}
 	}
 }
@@ -504,7 +526,7 @@ func (f *Flag) NewAlias(label string, letter rune) *Flag {
 		Letter:        letter,
 		AliasFor:      f,
 		Type:          flagType,
-		ParentFlagSet: f.ParentFlagSet,
+		parentFlagSet: f.parentFlagSet,
 	}
 }
 
@@ -557,15 +579,9 @@ func IsValidLabel(label string) bool {
 }
 
 func (f *Flag) Failf(format string, args ...interface{}) {
-	if f.ParentFlagSet == nil {
-		panic("parent flagset not set")
-	}
-	f.ParentFlagSet.Failf(format, args...)
+	f.ParentFlagSet().Failf(format, args...)
 }
 
 func (f *Flag) Infof(format string, args ...interface{}) {
-	if f.ParentFlagSet == nil {
-		panic("parent flagset not set")
-	}
-	f.ParentFlagSet.Infof(format, args...)
+	f.ParentFlagSet().Infof(format, args...)
 }
