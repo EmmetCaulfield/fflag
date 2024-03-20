@@ -300,7 +300,7 @@ NEXTARG:
 		if argType.HasParam() {
 			err = flag.Set(param)
 			if err != nil {
-				fs.Failf("failed to set flag '%s' with '%s'", flag.FlagString(), param)
+				fs.Failf("failed to set flag `%s` with '%s'", flag.String(), param)
 			}
 			continue NEXTARG
 		}
@@ -310,7 +310,7 @@ NEXTARG:
 			// End of InputArgs
 			err = flag.Set(nil)
 			if err != nil {
-				fs.Failf("failed to set flag '%s' at EOL with no parameter", flag.FlagString())
+				fs.Failf("failed to set flag `%s` at EOL with no parameter", flag.String())
 			}
 			continue NEXTARG
 		}
@@ -320,14 +320,14 @@ NEXTARG:
 			// Not a flag, try it as a parameter
 			err = flag.Set(param)
 			if err != nil {
-				fs.Failf("failed to set flag '%s' with '%s'", flag.FlagString(), param)
+				fs.Failf("failed to set flag `%s` with '%s'", flag.String(), param)
 			}
 			continue NEXTARG
 		}
 		// Next arg is a flag, current flag has no parameter
 		err = flag.Set(nil)
 		if err != nil {
-			fs.Failf("failed to set flag '%s' with no parameter", flag.FlagString())
+			fs.Failf("failed to set flag `%s` with no parameter", flag.String())
 		}
 	}
 	if err != nil {

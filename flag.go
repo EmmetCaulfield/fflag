@@ -144,7 +144,6 @@ package fflag
 
 import (
 	"bytes"
-	"fmt"
 	"unicode"
 
 	"github.com/EmmetCaulfield/fflag/pkg/types"
@@ -207,6 +206,7 @@ type Flag struct {
 	Label         string
 	Letter        rune
 	Type          FlagType
+	Count         int
 	ValueTypeTag  string
 	Default       interface{}
 	AliasFor      *Flag
@@ -227,21 +227,48 @@ func (f *Flag) Set(value interface{}) error {
 	// Prefer the SetValue interface if present:
 	if setter, ok := f.Value.(types.SetValue); ok {
 		if str, ok := value.(string); ok {
+			f.Count++
 			return setter.Set(str)
 		}
 		f.Failf("Cannot pass non-string to SetValue.Set(string) in flag.Set() for flag '%s'", f.Label)
 		return &FlagError{"failed to pass non-string to SetValue.Set()"}
 	}
 
-	valix := f.Value
-	if valix == nil && f.AliasFor != nil {
-		valix = f.AliasFor.Value
+	if f.AliasFor != nil {
+		f = f.AliasFor
+	}
+	if f.AliasFor != nil {
+		panic("Double aliases are not permitted")
+	}
+
+	f.Count++
+	if f.IsCounter() {
+		// TODO(emmet): think about this. It might be useful to be
+		// able to stick the count into a string and it would work
+		// fine, but OTOH, do we really want to be putting counts into
+		// strings just because we can? At the other extreme, should
+		// we be insisting that count must be an int "just because"?
+		//
+		// if !types.IsNum(f.Value) {
+		//     panic("non-numeric value cannot be a counter")
+		// }
+		str := types.StrConv(f.Count)
+		err := types.FromStr(f.Value, str)
+		if err != nil {
+			f.Failf("failed to set counter '%s' from %d", f.String(), f.Count)
+		}
+		return err
+	}
+
+	if f.Count > 1 && !f.IsRepeatable() {
+		f.Failf("flag '%s' is not repeatable", f.String())
+		return &FlagError{"flag not repeatable"}
 	}
 
 	if value == nil {
 		var boolp *bool
 		var ok, def bool
-		if boolp, ok = valix.(*bool); !ok {
+		if boolp, ok = f.Value.(*bool); !ok {
 			f.Failf("flag.Set(nil) called for non-boolean flag '%s' of type %T", f.Label, f.Value)
 			return &FlagError{"cannot set nil value for non-bool"}
 		}
@@ -254,24 +281,27 @@ func (f *Flag) Set(value interface{}) error {
 	}
 
 	if str, ok := value.(string); ok {
-		err := types.FromStr(valix, str)
+		err := types.FromStr(f.Value, str)
 		if err != nil {
-			f.Failf("failed to convert '%s' to %T: %v", str, valix, err)
+			f.Failf("failed to convert '%s' to %T: %v", str, f.Value, err)
 		}
 		return err
 	}
 
 	// Last-ditch attempt: round-trip the value
 	str := types.StrConv(value)
-	err := types.FromStr(valix, str)
+	err := types.FromStr(f.Value, str)
 	if err != nil {
-		f.Failf("failed to convert '%s' to %T: %v", str, valix, err)
+		f.Failf("failed to convert '%s' to %T: %v", str, f.Value, err)
 		return err
 	}
 	return nil
 }
 
 func (f *Flag) GetValue() string {
+	if f.AliasFor != nil {
+		f = f.AliasFor
+	}
 	return types.StrConv(f.Value)
 }
 
@@ -342,23 +372,31 @@ func (f *Flag) GetTypeTag() string {
 // the short version first, followed by a comma, followed by long
 // version, e.g. "-x, --example", otherwise just the version that's
 // defined, e.g. "-x" or "--example"
+func (f *Flag) String() string {
+	if f.Letter != rune(0) && len(f.Label) > 1 {
+		return "-" + string(f.Letter) + ", --" + f.Label
+	}
+	if len(f.Label) > 1 {
+		return "--" + f.Label
+	}
+	if f.Letter != rune(0) {
+		return "-" + string(f.Letter)
+	}
+	return ""
+}
+
+// Returns f.String() wrapped in extra stuff for help/usage output
 func (f *Flag) FlagString() string {
 	buf := &bytes.Buffer{}
 	if f.Letter == rune(0) {
 		buf.WriteString(`    `)
-	} else {
-		buf.WriteRune('-')
-		buf.WriteRune(f.Letter)
-		if len(f.Label) > 1 {
-			buf.WriteString(`, `)
-		}
 	}
-	if len(f.Label) > 1 {
-		fmt.Fprintf(buf, "--%s", f.Label)
-	}
+	buf.WriteString(f.String())
+
 	tag := f.GetTypeTag()
 	if len(tag) > 0 {
-		fmt.Fprintf(buf, "=%s", tag)
+		buf.WriteRune('=')
+		buf.WriteString(tag)
 	}
 	return buf.String()
 }
@@ -370,7 +408,7 @@ func (f *Flag) DescString() string {
 			buf.WriteString("obsolete ")
 		}
 		buf.WriteString("synonym for ")
-		buf.WriteString(f.AliasFor.FlagString())
+		buf.WriteString(f.AliasFor.String())
 		return buf.String()
 	}
 	if f.Type.TstNotImplementedBit() {
@@ -412,7 +450,7 @@ func WithAlias(label string, letter rune, obsolete bool) FlagOption {
 		}
 		flag = f.NewAlias(label, letter)
 		if flag == nil {
-			f.Failf("error creating alias -%c/--%s for -%c/--%s", letter, label, f.Letter, f.Label)
+			f.Failf("error creating alias -%c/--%s for `%s`", letter, label, f)
 			panic("alias cannot be created")
 		}
 		if obsolete {
@@ -437,10 +475,17 @@ func WithDefault(def interface{}) FlagOption {
 	}
 }
 
+func Repeatable() FlagOption {
+	return func(f *Flag) {
+		f.Type.SetRepeatableBit()
+	}
+}
+
 func AsCounter() FlagOption {
 	return func(f *Flag) {
 		if types.IsNum(f.Value) {
 			f.Type.SetCounterBit()
+			// f.Type.SetRepeatableBit()
 		} else {
 			f.Failf("cannot use non-numeric flag '%s' as counter", f.Label)
 		}
@@ -504,6 +549,7 @@ func NewFlag(value interface{}, label string, usage string, opts ...FlagOption) 
 		Label:  label,
 		Letter: rune(0),
 		Usage:  usage,
+		Count:  0,
 	}
 	if types.IsSlice(value) {
 		f.Type.SetRepeatableBit()
@@ -534,6 +580,7 @@ func (f *Flag) NewAlias(label string, letter rune) *Flag {
 		Letter:        letter,
 		AliasFor:      f,
 		Type:          flagType,
+		Count:         -1, // count in `AliasFor` target
 		parentFlagSet: f.parentFlagSet,
 	}
 }

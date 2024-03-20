@@ -26,6 +26,11 @@ func TestBasicSet(t *testing.T) {
 	if err != nil || b != true {
 		t.Error("failed to set basic boolean from bool constant")
 	}
+	err = f.Set(true)
+	if err == nil {
+		t.Error("unexpected success on repeat Set() of flag not marked repeatable")
+	}
+	f.Type.SetRepeatableBit()
 	b = false
 	err = f.Set("true")
 	if err != nil || b != true {
@@ -41,6 +46,9 @@ func TestBasicSet(t *testing.T) {
 	if err != nil || b != true {
 		t.Error(`failed to set basic boolean from int 1`)
 	}
+	if f.Count != 5 {
+		t.Errorf(`wrong repeat count; expected 5, got %d`, f.Count)
+	}
 
 	f = NewFlag(&b, "foo", "a boolean flag", WithDefault(true))
 	if f == nil {
@@ -50,9 +58,12 @@ func TestBasicSet(t *testing.T) {
 	if err != nil || b != false {
 		t.Error(`failed to toggle basic boolean with nil`)
 	}
+	if f.Count != 1 {
+		t.Errorf(`wrong repeat count; expected 1, got %d`, f.Count)
+	}
 
 	var i8 int8 = 11
-	f = NewFlag(&i8, "foo", "an 8-bit int flag", WithDefault(25))
+	f = NewFlag(&i8, "foo", "an 8-bit int flag", WithDefault(25), Repeatable())
 	if f == nil || i8 != 25 {
 		t.Errorf("failed to create int8 flag with default (%d != 25)", i8)
 	}
@@ -72,9 +83,12 @@ func TestBasicSet(t *testing.T) {
 	if err != nil || i8 != 50 {
 		t.Error(`failed to set int8 with string "50"`)
 	}
+	if f.Count != 4 {
+		t.Errorf(`wrong repeat count; expected 4, got %d`, f.Count)
+	}
 
 	var u8 uint8
-	f = NewFlag(&u8, "foo", "an 8-bit unsigned int flag")
+	f = NewFlag(&u8, "foo", "an 8-bit unsigned int flag", Repeatable())
 	err = f.Set(100)
 	if err != nil || u8 != 100 {
 		t.Error("failed to set basic uint8")
@@ -86,6 +100,25 @@ func TestBasicSet(t *testing.T) {
 	err = f.Set(-1)
 	if err == nil {
 		t.Error("unexpected success with value out of range")
+	}
+	if f.Count != 3 {
+		t.Errorf(`wrong repeat count; expected 3, got %d`, f.Count)
+	}
+
+	var u16 uint16
+	f = NewFlag(&u16, "foo", "a 16-bit counter", AsCounter())
+	err = f.Set(100)
+	if err != nil || u16 != 1 {
+		t.Errorf("failed to set basic counter; expected 1, got %d", u16)
+	}
+	f.Set(nil)
+	f.Set("something")
+	f.Set(-100000000)
+	f.Set(3.14159)
+	f.Set(nil)
+
+	if f.Count != 6 {
+		t.Errorf(`wrong repeat count; expected 6, got %d`, f.Count)
 	}
 }
 
