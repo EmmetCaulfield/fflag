@@ -120,4 +120,13 @@ func TestVectorSet(t *testing.T) {
 	if !reflect.DeepEqual(a, b) {
 		t.Errorf("value mismatch: expected %v, got %v", b, a)
 	}
+
+	a = a[:0]
+	err = f.Set([]string{"true", "false", "true"})
+	if err != nil {
+		t.Error("error setting bool slice from string slice")
+	}
+	if !reflect.DeepEqual(a, b) {
+		t.Errorf("value mismatch: expected %v, got %v", b, a)
+	}
 }
