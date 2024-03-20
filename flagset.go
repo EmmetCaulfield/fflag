@@ -156,7 +156,7 @@ func (fs *FlagSet) AddFlag(f *Flag) error {
 		}
 		f.Label = ""
 	}
-	if !IsValidShortcut(f.Letter) {
+	if f.Letter != rune(0) && !IsValidShortcut(f.Letter) {
 		if !f.IsLabelAlias() {
 			return fmt.Errorf("shortcut '%c' for '%s' is invalid", f.Letter, f.Label)
 		}
@@ -187,7 +187,13 @@ func (fs *FlagSet) Var(value interface{}, label string, usage string, opts ...Fl
 	// already exist in the parent flagset
 	options := append([]FlagOption{WithParent(fs)}, opts...)
 	f := NewFlag(value, label, usage, options...)
-	_ = fs.AddFlag(f)
+	if f == nil {
+		fs.Failf("Failed to create new flag %s", label)
+	}
+	err := fs.AddFlag(f)
+	if err != nil {
+		fs.Failf("Failed to add new flag %s, %#v: %v", label, f, err)
+	}
 }
 
 func Var(value interface{}, label string, usage string, opts ...FlagOption) {
@@ -207,10 +213,19 @@ func (fs *FlagSet) Dump() {
 	fmt.Fprintf(fs.Output, "FailExitCode: %+v\n", fs.FailExitCode)
 }
 
+func (fs *FlagSet) DumpFlags() {
+	for _, f := range fs.FlagList {
+		char := f.Letter
+		if char == rune(0) {
+			fmt.Fprintf(fs.Output, "FLAG: --%s = %s\n", f.Label, f.GetValue())
+		}
+		fmt.Fprintf(fs.Output, "FLAG: -%c/--%s = %s\n", f.Letter, f.Label, f.GetValue())
+	}
+}
+
 func (fs *FlagSet) Failf(format string, args ...interface{}) {
 	if !fs.OnFail.TstSilentBit() {
 		fmt.Fprintf(fs.Output, "ERROR: " + format + "\n", args...)
-		fs.Dump()
 	}
 	if fs.OnFail.TstContinueBit() {
 		return
