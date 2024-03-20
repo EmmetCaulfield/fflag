@@ -261,13 +261,14 @@ func parseSingleArg(arg string) (flags []string, param string, argType ArgMask) 
 
 func (fs *FlagSet) parse() error {
 	var err error
-	var i int = 1
+	var i int = 0
+NEXTARG:
 	for arg, err := fs.InputArgs.Shift(); err == nil; arg, err = fs.InputArgs.Shift() {
-		fmt.Printf("%02d> '%s' ", i, arg)
+		i++
 		flags, param, argType := parseSingleArg(arg)
 		if !argType.IsFlag() {
 			fs.OutputArgs.Push(param)
-			continue
+			continue NEXTARG
 		}
 		var flag *Flag = nil
 		if argType.IsCluster() {
@@ -282,13 +283,52 @@ func (fs *FlagSet) parse() error {
 					fs.Failf("failed to set short flag '%s' in cluster '%s'", s, arg)
 					continue
 				}
+				continue NEXTARG
 			}
 			flag = fs.Lookup(flags[len(flags)-1])
+			if flag == nil {
+				fs.Failf("shortcut '%s' not defined in cluster '%s'", flags[len(flags)-1], arg)
+				continue
+			}
 		} else {
 			flag = fs.Lookup(flags[0])
+			if flag == nil {
+				fs.Failf("flag '%s' not defined", flags[0])
+				continue
+			}
 		}
-		// fmt.Printf("%s -> %s (%016b)\n", flags, param, argType)
-		i++
+		if argType.HasParam() {
+			err = flag.Set(param)
+			if err != nil {
+				fs.Failf("failed to set flag '%s' with '%s'", flag.FlagString(), param)
+			}
+			continue NEXTARG
+		}
+		// Peek at the next argument
+		next, err := fs.InputArgs.Front()
+		if err != nil {
+			// End of InputArgs
+			err = flag.Set(nil)
+			if err != nil {
+				fs.Failf("failed to set flag '%s' at EOL with no parameter", flag.FlagString())
+			}
+			continue NEXTARG
+		}
+		// Have next arg, might be a parameter
+		flags, param, nextArgType := parseSingleArg(next)
+		if !nextArgType.IsFlag() {
+			// Not a flag, try it as a parameter
+			err = flag.Set(param)
+			if err != nil {
+				fs.Failf("failed to set flag '%s' with '%s'", flag.FlagString(), param)
+			}
+			continue NEXTARG
+		}
+		// Next arg is a flag, current flag has no parameter
+		err = flag.Set(nil)
+		if err != nil {
+			fs.Failf("failed to set flag '%s' with no parameter", flag.FlagString())
+		}
 	}
 	if err != nil {
 		return err
