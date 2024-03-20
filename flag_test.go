@@ -1,6 +1,7 @@
 package fflag
 
 import (
+	"reflect"
 	"testing"
 )
 
@@ -13,7 +14,11 @@ func TestBasicSet(t *testing.T) {
 	setup()
 	// Bool
 	var b bool
-	f := NewFlag(&b, "foo", "a boolean flag")
+	f := NewFlag(b, "foo", "a non-pointer (bad)")
+	if f != nil {
+		t.Error("unexpected success creating new flag from non-pointer")
+	}
+	f = NewFlag(&b, "foo", "a boolean flag")
 	if f == nil {
 		t.Error("failed create boolean flag")
 	}
@@ -81,5 +86,38 @@ func TestBasicSet(t *testing.T) {
 	err = f.Set(-1)
 	if err == nil {
 		t.Error("unexpected success with value out of range")
+	}
+}
+
+func TestVectorSet(t *testing.T) {
+	setup()
+	b := []bool{true, false, true}
+	f := NewFlag(b, "foo", "a non-pointer (bad)")
+	if f != nil {
+		t.Error("unexpected success creating new flag from non-pointer")
+	}
+	f = NewFlag(&b, "foo", "a boolean slice")
+	if f != nil {
+		t.Error("unexpected success creating new flag from non-empty slice")
+	}
+	a := []bool{}
+	f = NewFlag(&a, "foo", "a boolean slice flag")
+	if f == nil {
+		t.Error("error new flag from empty slice")
+	}
+	err := f.Set(true)
+	if err != nil {
+		t.Error("error setting initial value on slice")
+	}
+	err = f.Set(false)
+	if err != nil {
+		t.Error("error setting 2nd value on slice")
+	}
+	err = f.Set(true)
+	if err != nil {
+		t.Error("error setting 3rd value on slice")
+	}
+	if !reflect.DeepEqual(a, b) {
+		t.Errorf("value mismatch: expected %v, got %v", b, a)
 	}
 }

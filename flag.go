@@ -482,9 +482,15 @@ func WithCallback(callback CallbackFunction) FlagOption {
 }
 
 func NewFlag(value interface{}, label string, usage string, opts ...FlagOption) *Flag {
+	// Require pointers as storage targets:
 	if !types.IsPointer(value) {
 		return nil
 	}
+	// Don't allow non-empty slices as storage targets:
+	if types.IsSlice(value) && types.SliceLen(value) != 0 {
+		return nil
+	}
+
 	if !IsValidLabel(label) {
 		return nil
 	}
@@ -509,6 +515,8 @@ func NewFlag(value interface{}, label string, usage string, opts ...FlagOption) 
 }
 
 func (f *Flag) NewAlias(label string, letter rune) *Flag {
+	// alias has same type as target except that the appropriate alias
+	// bits are set
 	flagType := f.Type
 	if len(label) > 1 && IsValidLabel(label) {
 		flagType.SetLabelAliasBit()
@@ -521,7 +529,7 @@ func (f *Flag) NewAlias(label string, letter rune) *Flag {
 	}
 
 	return &Flag{
-		Value:         nil, // stored in target
+		Value:         nil, // stored in `AliasFor` target
 		Label:         label,
 		Letter:        letter,
 		AliasFor:      f,
