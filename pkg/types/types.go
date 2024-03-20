@@ -821,9 +821,6 @@ func FromStr(ix interface{}, str string, opts ...StrConvOption) error {
 	if !typeId.TstPointerBit() {
 		return fmt.Errorf("interface (%v) does not represent a pointer (%T)", ix, ix)
 	}
-	if typeId.TstSliceBit() && SliceLen(ix) != 0 {
-		return fmt.Errorf("interface (%v) represents a non-empty slice (%T)", ix, ix)
-	}
 
 	switch v := ix.(type) {
 	// Booleans

@@ -369,10 +369,6 @@ func TestStrConv_bool(t *testing.T) {
     }
 
     s = StrConv(&sa, WithSep("="))
-    err = FromStr(&sb, s, WithSep("="))
-    if err == nil {
-        t.Errorf("unexpected success rountripping %v via '%s' with nonempty slice %v", &sa, s, sb)
-    }
     sb = sb[:0]
     err = FromStr(&sb, s, WithSep("="))
     if err != nil {
@@ -416,10 +412,6 @@ func TestStrConv_int(t *testing.T) {
     }
 
     s = StrConv(&sa, WithSep("/"))
-    err = FromStr(&sb, s, WithSep("/"))
-    if err == nil {
-        t.Errorf("unexpected success rountripping %v via '%s' with nonempty slice %v", &sa, s, sb)
-    }
     sb = sb[:0]
     err = FromStr(&sb, s, WithSep("/"))
     if err != nil {
@@ -463,10 +455,6 @@ func TestStrConv_int8(t *testing.T) {
     }
 
     s = StrConv(&sa, WithSep("|"))
-    err = FromStr(&sb, s, WithSep("|"))
-    if err == nil {
-        t.Errorf("unexpected success rountripping %v via '%s' with nonempty slice %v", &sa, s, sb)
-    }
     sb = sb[:0]
     err = FromStr(&sb, s, WithSep("|"))
     if err != nil {
@@ -510,10 +498,6 @@ func TestStrConv_int16(t *testing.T) {
     }
 
     s = StrConv(&sa, WithSep("%"))
-    err = FromStr(&sb, s, WithSep("%"))
-    if err == nil {
-        t.Errorf("unexpected success rountripping %v via '%s' with nonempty slice %v", &sa, s, sb)
-    }
     sb = sb[:0]
     err = FromStr(&sb, s, WithSep("%"))
     if err != nil {
@@ -557,10 +541,6 @@ func TestStrConv_int32(t *testing.T) {
     }
 
     s = StrConv(&sa, WithSep("###"))
-    err = FromStr(&sb, s, WithSep("###"))
-    if err == nil {
-        t.Errorf("unexpected success rountripping %v via '%s' with nonempty slice %v", &sa, s, sb)
-    }
     sb = sb[:0]
     err = FromStr(&sb, s, WithSep("###"))
     if err != nil {
@@ -604,10 +584,6 @@ func TestStrConv_int64(t *testing.T) {
     }
 
     s = StrConv(&sa, WithSep("/"))
-    err = FromStr(&sb, s, WithSep("/"))
-    if err == nil {
-        t.Errorf("unexpected success rountripping %v via '%s' with nonempty slice %v", &sa, s, sb)
-    }
     sb = sb[:0]
     err = FromStr(&sb, s, WithSep("/"))
     if err != nil {
@@ -651,10 +627,6 @@ func TestStrConv_uint(t *testing.T) {
     }
 
     s = StrConv(&sa, WithSep("/"))
-    err = FromStr(&sb, s, WithSep("/"))
-    if err == nil {
-        t.Errorf("unexpected success rountripping %v via '%s' with nonempty slice %v", &sa, s, sb)
-    }
     sb = sb[:0]
     err = FromStr(&sb, s, WithSep("/"))
     if err != nil {
@@ -698,10 +670,6 @@ func TestStrConv_uint8(t *testing.T) {
     }
 
     s = StrConv(&sa, WithSep("/"))
-    err = FromStr(&sb, s, WithSep("/"))
-    if err == nil {
-        t.Errorf("unexpected success rountripping %v via '%s' with nonempty slice %v", &sa, s, sb)
-    }
     sb = sb[:0]
     err = FromStr(&sb, s, WithSep("/"))
     if err != nil {
@@ -745,10 +713,6 @@ func TestStrConv_uint16(t *testing.T) {
     }
 
     s = StrConv(&sa, WithSep("/"))
-    err = FromStr(&sb, s, WithSep("/"))
-    if err == nil {
-        t.Errorf("unexpected success rountripping %v via '%s' with nonempty slice %v", &sa, s, sb)
-    }
     sb = sb[:0]
     err = FromStr(&sb, s, WithSep("/"))
     if err != nil {
@@ -792,10 +756,6 @@ func TestStrConv_uint32(t *testing.T) {
     }
 
     s = StrConv(&sa, WithSep("/"))
-    err = FromStr(&sb, s, WithSep("/"))
-    if err == nil {
-        t.Errorf("unexpected success rountripping %v via '%s' with nonempty slice %v", &sa, s, sb)
-    }
     sb = sb[:0]
     err = FromStr(&sb, s, WithSep("/"))
     if err != nil {
@@ -839,10 +799,6 @@ func TestStrConv_uint64(t *testing.T) {
     }
 
     s = StrConv(&sa, WithSep("/"))
-    err = FromStr(&sb, s, WithSep("/"))
-    if err == nil {
-        t.Errorf("unexpected success rountripping %v via '%s' with nonempty slice %v", &sa, s, sb)
-    }
     sb = sb[:0]
     err = FromStr(&sb, s, WithSep("/"))
     if err != nil {
@@ -886,10 +842,6 @@ func TestStrConv_float32(t *testing.T) {
     }
 
     s = StrConv(&sa, WithSep("/"))
-    err = FromStr(&sb, s, WithSep("/"))
-    if err == nil {
-        t.Errorf("unexpected success rountripping %v via '%s' with nonempty slice %v", &sa, s, sb)
-    }
     sb = sb[:0]
     err = FromStr(&sb, s, WithSep("/"))
     if err != nil {
@@ -933,10 +885,6 @@ func TestStrConv_float64(t *testing.T) {
     }
 
     s = StrConv(&sa, WithSep("/"))
-    err = FromStr(&sb, s, WithSep("/"))
-    if err == nil {
-        t.Errorf("unexpected success rountripping %v via '%s' with nonempty slice %v", &sa, s, sb)
-    }
     sb = sb[:0]
     err = FromStr(&sb, s, WithSep("/"))
     if err != nil {
@@ -980,10 +928,6 @@ func TestStrConv_byte(t *testing.T) {
     }
 
     s = StrConv(&sa, WithSep("/"))
-    err = FromStr(&sb, s, WithSep("/"))
-    if err == nil {
-        t.Errorf("unexpected success rountripping %v via '%s' with nonempty slice %v", &sa, s, sb)
-    }
     sb = sb[:0]
     err = FromStr(&sb, s, WithSep("/"))
     if err != nil {
@@ -1027,10 +971,6 @@ func TestStrConv_rune(t *testing.T) {
     }
 
     s = StrConv(&sa, WithSep("/"))
-    err = FromStr(&sb, s, WithSep("/"))
-    if err == nil {
-        t.Errorf("unexpected success rountripping %v via '%s' with nonempty slice %v", &sa, s, sb)
-    }
     sb = sb[:0]
     err = FromStr(&sb, s, WithSep("/"))
     if err != nil {
@@ -1074,10 +1014,6 @@ func TestStrConv_string(t *testing.T) {
     }
 
     s = StrConv(&sa, WithSep("/"))
-    err = FromStr(&sb, s, WithSep("/"))
-    if err == nil {
-        t.Errorf("unexpected success rountripping %v via '%s' with nonempty slice %v", &sa, s, sb)
-    }
     sb = sb[:0]
     err = FromStr(&sb, s, WithSep("/"))
     if err != nil {

@@ -39,10 +39,6 @@ func TestStrConv_${type}(t *testing.T) {
     }
 
     s = StrConv(&sa, WithSep("${sep}"))
-    err = FromStr(&sb, s, WithSep("${sep}"))
-    if err == nil {
-        t.Errorf("unexpected success rountripping %v via '%s' with nonempty slice %v", &sa, s, sb)
-    }
     sb = sb[:0]
     err = FromStr(&sb, s, WithSep("${sep}"))
     if err != nil {
