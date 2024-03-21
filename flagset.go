@@ -34,11 +34,23 @@ func (fb *FailOption) ClrPanicBit()    { *fb &= ^FailPanic }
 // CommandLine is the default FlagSet, named by analogy with `pflag`
 var CommandLine *FlagSet = NewFlagSet()
 
-type FlagSet struct {
+type FlagGroup struct {
+	Title string
 	FlagList          []*Flag
+}
+
+func NewFlagGroup(title string) *FlagGroup {
+	return &FlagGroup{
+		Title: title,
+		FlagList: []*Flag{},
+	}
+}
+
+type FlagSet struct {
+	Groups            []*FlagGroup
+	GroupIndex        int
 	LabelDict         map[string]*Flag
 	LetterDict        map[rune]*Flag
-	IsSorted          bool
 	Output            io.Writer
 	IgnoreDoubleDash  bool
 	InputArgs        *deque.Deque[string]
@@ -47,14 +59,28 @@ type FlagSet struct {
 	FailExitCode      int
 }
 
+func (fs *FlagSet) NewFlagGroup(title string) *FlagGroup {
+	fg := NewFlagGroup(title)
+	fs.Groups = append(fs.Groups, fg)
+	fs.GroupIndex = len(fs.Groups) - 1
+	return fg
+}
+
+func (fs *FlagSet) Group() *FlagGroup {
+	// Happy for this to panic
+	return fs.Groups[fs.GroupIndex]
+}
+
 type FlagSetOption = func (fs *FlagSet)
 
 func NewFlagSet(opts ...FlagSetOption) *FlagSet {
 	fs := &FlagSet {
-		FlagList:         []*Flag{},
+		Groups: []*FlagGroup{
+			NewFlagGroup("Options"),
+		},
+		GroupIndex:       0,
 		LabelDict:        map[string]*Flag{},
 		LetterDict:       map[rune]*Flag{},
-		IsSorted:         false,
 		Output:           os.Stderr,
 		IgnoreDoubleDash: false,
 		InputArgs:        &deque.Deque[string]{},
@@ -66,6 +92,12 @@ func NewFlagSet(opts ...FlagSetOption) *FlagSet {
 		opt(fs)
 	}
 	return fs
+}
+
+func WithGroupTitle(title string) FlagSetOption {
+	return func(fs *FlagSet) {
+		fs.Groups[0].Title = title
+	}
 }
 
 func WithOutputWriter(w io.Writer) FlagSetOption {
@@ -101,7 +133,11 @@ func IgnoringDoubleDash() FlagSetOption {
 // HasFlags returns a bool to indicate if the FlagSet has any flags
 // defined.
 func (fs *FlagSet) HasFlags() bool {
-	return len(fs.FlagList) > 0
+	n := 0
+	for _, g := range fs.Groups {
+		n += len(g.FlagList)
+	}
+	return n > 0
 }
 
 func (fs *FlagSet) LookupLabel(label string) *Flag {
@@ -176,17 +212,16 @@ func (fs *FlagSet) AddFlag(f *Flag) error {
 		fs.LetterDict[f.Letter] = f
 	}
 
-	fs.FlagList = append(fs.FlagList, f)
-	fs.IsSorted = false
+	fs.Group().FlagList = append(fs.Group().FlagList, f)
 	return nil
 }
 
-func (fs *FlagSet) Var(value interface{}, label string, usage string, opts ...FlagOption) {
+func (fs *FlagSet) Var(value interface{}, letter rune, label string, usage string, opts ...FlagOption) {
 	// We need to set the parent flagset early because some of the
 	// functions downstream of NewFlag() check that the flag doesn't
 	// already exist in the parent flagset
 	options := append([]FlagOption{WithParent(fs)}, opts...)
-	f := NewFlag(value, label, usage, options...)
+	f := NewFlag(value, letter, label, usage, options...)
 	if f == nil {
 		fs.Failf("Failed to create new flag %s", label)
 	}
@@ -196,15 +231,32 @@ func (fs *FlagSet) Var(value interface{}, label string, usage string, opts ...Fl
 	}
 }
 
-func Var(value interface{}, label string, usage string, opts ...FlagOption) {
-	CommandLine.Var(value, label, usage, opts...)
+func Var(value interface{}, letter rune, label string, usage string, opts ...FlagOption) {
+	CommandLine.Var(value, letter, label, usage, opts...)
+}
+
+func (fs *FlagSet) Equ(letter rune, label string, equiv string, value string) {
+	var f *Flag = nil
+	f = fs.LookupLabel(equiv)
+	if f == nil {
+		panic("flag not found in equivalent lookup")
+	}
+	a := f.NewAlias(letter, label, WithValue(value))
+	err := fs.AddFlag(a)
+	if err != nil {
+		f.Failf("Error adding alias: %v", err)
+	}
+}
+
+func Equ(letter rune, label string, equiv string, value string) {
+	CommandLine.Equ(letter, label, equiv, value)
 }
 
 func (fs *FlagSet) Dump() {
-	fmt.Fprintf(fs.Output, "FlagList: %+v\n", fs.FlagList)
+	fmt.Fprintf(fs.Output, "Groups: %+v\n", fs.Groups)
+	fmt.Fprintf(fs.Output, "GroupIndex: %+v\n", fs.GroupIndex)
 	fmt.Fprintf(fs.Output, "LabelDict: %+v\n", fs.LabelDict)
 	fmt.Fprintf(fs.Output, "LetterDict: %+v\n", fs.LetterDict)
-	fmt.Fprintf(fs.Output, "IsSorted: %+v\n", fs.IsSorted)
 	fmt.Fprintf(fs.Output, "Output: %+v\n", fs.Output)
 	fmt.Fprintf(fs.Output, "IgnoreDoubleDash: %+v\n", fs.IgnoreDoubleDash)
 	fmt.Fprintf(fs.Output, "InputArgs: %+v\n", fs.InputArgs)
@@ -214,12 +266,11 @@ func (fs *FlagSet) Dump() {
 }
 
 func (fs *FlagSet) DumpFlags() {
-	for _, f := range fs.FlagList {
-		char := f.Letter
-		if char == rune(0) {
-			fmt.Fprintf(fs.Output, "FLAG: --%s = %s\n", f.Label, f.GetValue())
+	for _, g := range fs.Groups {
+		fmt.Fprintf(fs.Output, "Group: %s\n", g.Title)
+		for _, f := range g.FlagList {
+			fmt.Fprintf(fs.Output, "\tFLAG: %s = %s\n", f, f.GetValue())
 		}
-		fmt.Fprintf(fs.Output, "FLAG: -%c/--%s = %s\n", f.Letter, f.Label, f.GetValue())
 	}
 }
 
@@ -243,8 +294,10 @@ func (fs *FlagSet) Infof(format string, args ...interface{}) {
 
 func (fs *FlagSet) FlagStringMaxLen() int {
 	maxLen := 0
-	for _, f := range fs.FlagList {
-		maxLen = max(maxLen, len(f.FlagString()))
+	for _, g := range fs.Groups {
+		for _, f := range g.FlagList {
+			maxLen = max(maxLen, len(f.FlagString()))
+		}
 	}
 	return maxLen
 }
@@ -252,9 +305,12 @@ func (fs *FlagSet) FlagStringMaxLen() int {
 func (fs *FlagSet) AlignedFlagDescriptions(pre, mid, post string) []string {
 	fstrs := []string{}
 	maxl := fs.FlagStringMaxLen()
-	for _, f := range fs.FlagList {
-		s := fmt.Sprintf("%s%-*s%s%s%s", pre, maxl, f.FlagString(), mid, f.DescString(), post)
-		fstrs = append(fstrs, s)
+	for _, g := range fs.Groups {
+		fstrs = append(fstrs, g.Title)
+		for _, f := range g.FlagList {
+			s := fmt.Sprintf("%s%-*s%s%s%s", pre, maxl, f.FlagString(), mid, f.DescString(), post)
+			fstrs = append(fstrs, s)
+		}
 	}
 	return fstrs
 }

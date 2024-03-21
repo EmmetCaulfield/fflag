@@ -1,18 +1,42 @@
-// The `fflag` package provides GNU-style command-line argument
+// The `fflag` package provides GNU/POSIX style command-line argument
 // parsing with the functional options pattern.
 //
-// A `Flag` is created and added to the default `FlagSet` with
-// `Var()`. The minimal call to `Var()` provides: a pointer to a
-// variable where the value of the flag is to be stored; a "label",
-// which is the long-form command-line argument that is expected to be
-// presented on the command line with two leading dashes,
-// e.g. `--help`; and a brief description of the flag's purpose. For
-// example:
+//   * POSIX: https://pubs.opengroup.org/onlinepubs/9699919799/basedefs/V1_chap12.html
+//   * GNU: https://www.gnu.org/software/libc/manual/html_node/Argument-Syntax.html
 //
-//     fflag.Var(&value, "help", "prints a help message to stdout")
+// It is somewhat inspired by the `pflag` package in some respects,
+// but significantly different in others. The most significant
+// difference is that there is only one `Var()` function: the type of
+// the flag is determined by the type of the first argument, which
+// MUST be a pointer to a basic type, a slice of basic type, or a
+// struct implementing the `SetValue` interface (inspired by
+// `pflag`).
 //
-// The label must consist solely of Unicode letters, numbers, and
-// hyphens. It must not begin with a hyphen.
+// The next significant difference is the order of the short flag and
+// long flag in the `Var()` argument list, with the short flag coming
+// first as a `rune`, which must be a single UTF-8 letter, most often
+// a single ASCII letter or number. If there is no short flag, the
+// zero value (0, or `\0') is used. The usual rules apply to long
+// flags, which must consist of letters and numbers, except that the
+// ASCII requirement has been relaxed. Any character satisfying
+// unicode.IsLetter() or unicode.IsNumber() or the hyphen '-' are
+// allowed. There is no attempt at normalization, a dubious utility: just use the long
+// flag you mean to use.
+//
+// `fflag` borrows the `Flag` and `FlagSet` names from `pflag`, adding
+// `FlagGroup`. The purpose of a flag group is to enable usage
+// information to be generated in a similar format to GNU/POSIX
+// utilities like `grep`.
+//
+// A `Flag` is created and added to the default `FlagGroup` in the
+// default `FlagSet` (called `CommandLine` after `pflag`'s equivalent)
+// with `Var()`. The minimal call to `Var()` provides: a pointer to a
+// variable where the value of the flag is to be stored; the
+// single-letter version of the flag as a rune (or 0 if none), e.g.,
+// 'h'; the long version of the flag (or "" if none), e.g. `--help`;
+// and a very brief description of the flag's purpose. For example:
+//
+//     fflag.Var(&value, 'h', "help", "prints a help message to stdout")
 //
 // The first argument to `Var` must be a POINTER to one of:
 //
@@ -20,55 +44,65 @@
 //   2) a slice of basic datatype (e.g. `[]int8`, `[]string`)
 //   3) a `struct` implementing the `Set()` interface
 //
-// A flag may have a single-character shortcut that is expected to be
-// presented on the command-line with one leading dash, e.g. `-x`. It
-// is introduced with the `WithShortcut(rune r)` option. For example:
+// A flag need not have a single-character shortcut. If there is no
+// shortcut, a 0 is given for the shortcut argument:
 //
-//     f := fflag.Var(&value, "help", "prints a help message to stdout",
-//         fflag.WithShortcut('?'))
+//    fflag.Var(&value, 0, "help", "prints a help message to stdout")
 //
 // Punctuation (or other non-letter, non-number) characters are not
 // normally allowed as shortcuts. The sole exception is '?' due to its
 // widespread use as an alias for "help".
 //
-// Note that the above flag definition will not actually cause a help
-// message of any kind to be printed: it is generally up to the
-// programmer to specify the behavior after command-line parsing is
-// complete.
+// Equally, a flag need not have a long version either:
 //
-// As a convenience, however, the `WithMessage()`, `WithUsage()` and
-// `WithExit()` options are provided.
+//    fflag.Var(&value, '?', "", "prints a help message to stdout")
 //
-//     fflag.Var(&value, "help", "prints a help message to stdout",
-//         fflag.WithShortcut('?'),
-//         fflag.WithMessage("USAGE: myprog [OPTION]... [FILE]..."),
-//         fflag.WithExit(0)
-//     )
+// Indeed, there is a special case (and common idiom) where NEITHER a
+// long nor a short form is required: `-NUM` (as in `grep`, `head`,
+// `tail`, and several other tools). These special cases are always an
+// alias for something else and always refer to an integer appearing
+// after a single hyphen. For example `head`'s `-n/--lines` is best
+// represented as:
 //
-// The difference between `WithMessage()` and `WithUsage()` options is
-// that `WithUsage()` prints a flag summary after the given message
-// while `WithMessage()` does not. `WithExit()` causes the program to
-// exit immediately with the given status code.
+//    int nlines
+//    fflag.Var(&nlines, 'n', 'lines', "print the first NUM lines instead of the first 10",
+//        fflag.WithAlias(0, "", false), fflag.WithTypeTag("[-]NUM"))
+//
+// Obviously, this special case can only be used once, but it requires
+// no special logic since it is always an error to attempt to create a
+// flag (an alias is just a special flag) that shares the short or
+// long form of an existing flag.
 //
 // The simplest ordinary flag is a nullary boolean switch that takes
 // no parameter.
 //
 //     bool value
-//     fflag.Var(&value, "easy", "use easy mode"))
+//     fflag.Var(&value, 'e', "easy", "use easy mode"))
 //
-// In this case, `value` will default to `false` (the zero value) and
-// become `true` if the command-line argument appears in either long
-// or shortcut (letter) form (if the `WithShortcut()` option is used)
-// or if any aliases are used.
+// In this case, `value` will default to `false` (the zero value for
+// `bool`s) and become `true` if the command-line argument appears in
+// either form (long or short). By default, it is an error to repeat a
+// scalar flag, but there are 3 options that make an exception:
 //
-//     bool ignoreCase
-//     f := NewFlag(&ignoreCase, "ignore-case", "ignore case in patterns",
-//         WithShortcut('i'), WithShortcutAlias('y', true))
+//   * `WithRepeats(ignore bool)`
+//   * `AsCounter()`
+//   * `WithCallback(callback func(...))`
 //
-// The second (boolean) argument to `WithShortcutAlias()` says that
-// the `-y` alias is obsolete. If marked obsolete, a deprecation
-// warning will be printed to `stderr` if it is used and its
-// obsolesence will be noted in generated flag summaries.
+// `WithRepeats()` allows repeat appearances of a flag, `AsCounter()`
+// causes the number of occurrences to be counted, and
+// `WithCallback()` causes the given callback function to be called
+// every time the flag appears on the command-line.
+//
+// Several utilities allow `-v/--verbose` to be repeated for
+// increasing levels of verbosity.
+//
+//     int verbosity
+//     f := NewFlag(&verbosity, 'v', "verbose", "increase verbosity", AsCounter())
+//
+// Note that it would be an error to supply BOTH the `AsCounter()` and
+// `WithCallback()` options for the same flag because `AsCounter()`
+// must modify the `value` while `WithCallback()` leaves modification
+// of the value to the callback function for flexibility.
 //
 // If a default is supplied, a boolean value will be toggled if the
 // flag is given.
@@ -79,14 +113,14 @@
 // In this case, `hard` will default to `true` and become false if
 // `--easy` appears on the command line.
 //
-// It is an error to repeat a command-line argument unless the first
-// argument to NewFlag is a pointer to a slice:
+// While it is an error to repeat a command-line argument whose
+// `value` argument is a pointer to a scalar (but see `WithRepeats()`
+// and `AsCounter()` options), if the value argument is a pointer to a
+// slice, successive invocations will result in successive values
+// being appended to the slice.
 //
 //     values := []bool{}
-//     f := NewFlag(&values, "example", WithShortcut('x'))
-//
-// In this case, successive values of the flag are appended to
-// `values` in the order in which they are processed.
+//     NewFlag(&values, 'x', "example", "example flag")
 //
 // The sole exception to this rule is where a callback function is
 // supplied:
@@ -144,6 +178,7 @@ package fflag
 
 import (
 	"bytes"
+	"strings"
 	"unicode"
 
 	"github.com/EmmetCaulfield/fflag/pkg/types"
@@ -157,20 +192,21 @@ func (fe *FlagError) Error() string {
 	return fe.s
 }
 
-type CallbackFunction func(value interface{}, label string, arg string, pos int)
+type CallbackFunction func(value interface{}, letter rune, label string, arg string, pos int) error
 
-type FlagType uint8
+type FlagType uint16
 
 const (
-	ClearFlagType     FlagType = 0b00000000
-	LabelAliasBit     FlagType = 0b00000001
-	LetterAliasBit    FlagType = 0b00000010
-	ObsoleteBit       FlagType = 0b00000100
-	NotImplementedBit FlagType = 0b00001000
-	HiddenBit         FlagType = 0b00010000
-	ChangedBit        FlagType = 0b00100000
-	CounterBit        FlagType = 0b01000000
-	RepeatableBit     FlagType = 0b10000000
+	ClearFlagType     FlagType = 0b0000000000000000
+	LabelAliasBit     FlagType = 0b0000000000000001
+	LetterAliasBit    FlagType = 0b0000000000000010
+	ObsoleteBit       FlagType = 0b0000000000000100
+	NotImplementedBit FlagType = 0b0000000000001000
+	HiddenBit         FlagType = 0b0000000000010000
+	ChangedBit        FlagType = 0b0000000000100000
+	CounterBit        FlagType = 0b0000000001000000
+	RepeatsBit        FlagType = 0b0000000010000000
+	IgnoreRepeatsBit  FlagType = 0b0000000100000000
 )
 
 func (ft *FlagType) TstLabelAliasBit() bool     { return *ft&LabelAliasBit != 0 }
@@ -180,7 +216,8 @@ func (ft *FlagType) TstNotImplementedBit() bool { return *ft&NotImplementedBit !
 func (ft *FlagType) TstHiddenBit() bool         { return *ft&HiddenBit != 0 }
 func (ft *FlagType) TstChangedBit() bool        { return *ft&ChangedBit != 0 }
 func (ft *FlagType) TstCounterBit() bool        { return *ft&CounterBit != 0 }
-func (ft *FlagType) TstRepeatableBit() bool     { return *ft&RepeatableBit != 0 }
+func (ft *FlagType) TstRepeatsBit() bool        { return *ft&RepeatsBit != 0 }
+func (ft *FlagType) TstIgnoreRepeatsBit() bool  { return *ft&IgnoreRepeatsBit != 0 }
 func (ft *FlagType) TstAliasBits() bool         { return (*ft&LetterAliasBit)|(*ft&LabelAliasBit) != 0 }
 
 func (ft *FlagType) ClrLabelAliasBit()     { *ft = *ft & ^LabelAliasBit }
@@ -190,7 +227,8 @@ func (ft *FlagType) ClrNotImplementedBit() { *ft = *ft & ^NotImplementedBit }
 func (ft *FlagType) ClrHiddenBit()         { *ft = *ft & ^HiddenBit }
 func (ft *FlagType) ClrChangedBit()        { *ft = *ft & ^ChangedBit }
 func (ft *FlagType) ClrCounterBit()        { *ft = *ft & ^CounterBit }
-func (ft *FlagType) ClrRepeatableBit()     { *ft = *ft & ^RepeatableBit }
+func (ft *FlagType) ClrRepeatsBit()        { *ft = *ft & ^RepeatsBit }
+func (ft *FlagType) ClrIgnoreRepeatsBit()  { *ft = *ft & ^IgnoreRepeatsBit }
 
 func (ft *FlagType) SetLabelAliasBit()     { *ft = *ft | LabelAliasBit }
 func (ft *FlagType) SetLetterAliasBit()    { *ft = *ft | LetterAliasBit }
@@ -199,7 +237,8 @@ func (ft *FlagType) SetNotImplementedBit() { *ft = *ft | NotImplementedBit }
 func (ft *FlagType) SetHiddenBit()         { *ft = *ft | HiddenBit }
 func (ft *FlagType) SetChangedBit()        { *ft = *ft | ChangedBit }
 func (ft *FlagType) SetCounterBit()        { *ft = *ft | CounterBit }
-func (ft *FlagType) SetRepeatableBit()     { *ft = *ft | RepeatableBit }
+func (ft *FlagType) SetRepeatsBit()        { *ft = *ft | RepeatsBit }
+func (ft *FlagType) SetIgnoreRepeatsBit()  { *ft = *ft | IgnoreRepeatsBit }
 
 type Flag struct {
 	Value         interface{}
@@ -216,6 +255,57 @@ type Flag struct {
 	parentFlagSet *FlagSet
 }
 
+const IdSep string = "/"
+const NoShort rune = rune(0)
+
+func ID(letter rune, label string) string {
+	// We use this for the -NUM special case used by a few utilities
+	// (e.g. head, tail), which has NEITHER a normal valid shortcut
+	// nor a normal valid long flag
+	if letter == NoShort && len(label) == 0 {
+		return "\u0000" + IdSep
+	}
+	// Otherwise, we require either the shortcut or the long flag to
+	// be valid
+	if IsValidShortcut(letter) || IsValidLabel(label) {
+		return string(letter) + IdSep + label
+	}
+	// An empty ID string is always an error
+	return ""
+}
+
+// Negative runes in the range -16 to -1 (U+FFF0 to U+FFFF) are
+// Unicode "Specials", notably U+FFFD (-3), the "Unicode replacement
+// character", so we avoid this range for error indication, but
+// otherwise use negative rune values to indicate an error in cases
+// where it's more convenient than a separate `error` return.
+const ErrRuneEmptyStr rune = -17
+const ErrRuneIdSepBad rune = -18
+const ErrRuneIdPartsBad rune = -19
+
+func UnID(id string) (rune, string) {
+	if id == "" {
+		return ErrRuneEmptyStr, ""
+	}
+	parts := strings.Split(id, IdSep)
+	if len(parts) != 2 {
+		return ErrRuneIdSepBad, ""
+	}
+	if parts[0] == "" && parts[1] == "" {
+		return rune(0), ""
+	}
+	// Get first rune in parts[0]
+	var letter rune
+	for _, char := range parts[0] {
+		letter = char
+		break
+	}
+	if IsValidShortcut(letter) || IsValidLabel(parts[1]) {
+		return letter, parts[1]
+	}
+	return ErrRuneIdPartsBad, ""
+}
+
 func (f *Flag) ParentFlagSet() *FlagSet {
 	if f.parentFlagSet == nil {
 		return CommandLine
@@ -223,7 +313,7 @@ func (f *Flag) ParentFlagSet() *FlagSet {
 	return f.parentFlagSet
 }
 
-func (f *Flag) Set(value interface{}) error {
+func (f *Flag) Set(value interface{}, argPos int) error {
 	// Prefer the SetValue interface if present:
 	if setter, ok := f.Value.(types.SetValue); ok {
 		if str, ok := value.(string); ok {
@@ -239,6 +329,11 @@ func (f *Flag) Set(value interface{}) error {
 	}
 	if f.AliasFor != nil {
 		panic("Double aliases are not permitted")
+	}
+
+	if f.HasCallback() {
+		v, _ := value.(string)
+		return f.Callback(f.Value, f.Letter, f.Label, v, argPos)
 	}
 
 	f.Count++
@@ -263,6 +358,10 @@ func (f *Flag) Set(value interface{}) error {
 	if f.Count > 1 && !f.IsRepeatable() {
 		f.Failf("flag '%s' is not repeatable", f.String())
 		return &FlagError{"flag not repeatable"}
+	}
+
+	if f.Count > 1 && f.IgnoreRepeats() {
+		return nil
 	}
 
 	if value == nil {
@@ -420,6 +519,8 @@ func (f *Flag) DescString() string {
 
 type FlagOption = func(f *Flag)
 
+type AliasOption = func(f *Flag)
+
 func WithParent(fs *FlagSet) FlagOption {
 	return func(f *Flag) {
 		if f.parentFlagSet != nil {
@@ -429,13 +530,13 @@ func WithParent(fs *FlagSet) FlagOption {
 	}
 }
 
-func WithShortcut(letter rune) FlagOption {
+func WithValue(value string) AliasOption {
 	return func(f *Flag) {
-		f.Letter = letter
+		f.Value = value
 	}
 }
 
-func WithAlias(label string, letter rune, obsolete bool) FlagOption {
+func WithAlias(letter rune, label string, obsolete bool) FlagOption {
 	return func(f *Flag) {
 		var flag *Flag = nil
 		flag = f.ParentFlagSet().LookupLabel(label)
@@ -448,7 +549,7 @@ func WithAlias(label string, letter rune, obsolete bool) FlagOption {
 			f.Failf("short flag already exists for alias '%c'", letter)
 			panic("alias cannot be created")
 		}
-		flag = f.NewAlias(label, letter)
+		flag = f.NewAlias(letter, label)
 		if flag == nil {
 			f.Failf("error creating alias -%c/--%s for `%s`", letter, label, f)
 			panic("alias cannot be created")
@@ -475,20 +576,24 @@ func WithDefault(def interface{}) FlagOption {
 	}
 }
 
-func Repeatable() FlagOption {
+func WithRepeats(ignore bool) FlagOption {
 	return func(f *Flag) {
-		f.Type.SetRepeatableBit()
+		f.Type.SetRepeatsBit()
 	}
 }
 
 func AsCounter() FlagOption {
 	return func(f *Flag) {
-		if types.IsNum(f.Value) {
-			f.Type.SetCounterBit()
-			// f.Type.SetRepeatableBit()
-		} else {
-			f.Failf("cannot use non-numeric flag '%s' as counter", f.Label)
+		if f.HasCallback() {
+			panic("cannot use flag with callback as counter")
 		}
+		if !f.IsScalar() {
+			panic("cannot use non-scalar (slice/object) as counter")
+		}
+		if !f.IsNumber() {
+			panic("counter variable must be a number")
+		}
+		f.Type.SetCounterBit()
 	}
 }
 
@@ -522,11 +627,14 @@ func WithTypeTag(tag string) FlagOption {
 
 func WithCallback(callback CallbackFunction) FlagOption {
 	return func(f *Flag) {
+		if f.IsCounter() {
+			panic("callback supplied for counter")
+		}
 		f.Callback = callback
 	}
 }
 
-func NewFlag(value interface{}, label string, usage string, opts ...FlagOption) *Flag {
+func NewFlag(value interface{}, letter rune, label string, usage string, opts ...FlagOption) *Flag {
 	// Require pointers as storage targets:
 	if !types.IsPointer(value) {
 		return nil
@@ -536,7 +644,7 @@ func NewFlag(value interface{}, label string, usage string, opts ...FlagOption) 
 		return nil
 	}
 
-	if !IsValidLabel(label) {
+	if !(IsValidLabel(label) || IsValidShortcut(letter)) {
 		return nil
 	}
 	if types.IsOtherT(value) {
@@ -547,12 +655,12 @@ func NewFlag(value interface{}, label string, usage string, opts ...FlagOption) 
 	f := &Flag{
 		Value:  value,
 		Label:  label,
-		Letter: rune(0),
+		Letter: letter,
 		Usage:  usage,
 		Count:  0,
 	}
 	if types.IsSlice(value) {
-		f.Type.SetRepeatableBit()
+		f.Type.SetRepeatsBit()
 	}
 	for _, opt := range opts {
 		opt(f)
@@ -560,7 +668,7 @@ func NewFlag(value interface{}, label string, usage string, opts ...FlagOption) 
 	return f
 }
 
-func (f *Flag) NewAlias(label string, letter rune) *Flag {
+func (f *Flag) NewAlias(letter rune, label string, opts ...FlagOption) *Flag {
 	// alias has same type as target except that the appropriate alias
 	// bits are set
 	flagType := f.Type
@@ -574,7 +682,7 @@ func (f *Flag) NewAlias(label string, letter rune) *Flag {
 		return nil
 	}
 
-	return &Flag{
+	a := &Flag{
 		Value:         nil, // stored in `AliasFor` target
 		Label:         label,
 		Letter:        letter,
@@ -583,6 +691,12 @@ func (f *Flag) NewAlias(label string, letter rune) *Flag {
 		Count:         -1, // count in `AliasFor` target
 		parentFlagSet: f.parentFlagSet,
 	}
+
+	for _, opt := range opts {
+		opt(a)
+	}
+
+	return a
 }
 
 func (f *Flag) IsLabelAlias() bool {
@@ -604,7 +718,19 @@ func (f *Flag) IsCounter() bool {
 	return f.Type.TstCounterBit()
 }
 func (f *Flag) IsRepeatable() bool {
-	return f.Type.TstRepeatableBit()
+	return f.Type.TstRepeatsBit()
+}
+func (f *Flag) IgnoreRepeats() bool {
+	return f.Type.TstIgnoreRepeatsBit()
+}
+func (f *Flag) IsScalar() bool {
+	return !types.IsSlice(f.Value)
+}
+func (f *Flag) IsNumber() bool {
+	return types.IsNum(f.Value)
+}
+func (f *Flag) HasCallback() bool {
+	return f.Callback != nil
 }
 
 // Only allow letters and numbers as shortcut letters
@@ -612,10 +738,21 @@ func IsValidShortcut(r rune) bool {
 	return r == '?' || unicode.IsLetter(r) || unicode.IsNumber(r)
 }
 
+func FirstRune(s string) rune {
+	if len(s) == 0 {
+		return ErrRuneEmptyStr
+	}
+	for _, char := range s {
+		return char
+	}
+	// This is impossible
+	panic("unreachable code")
+}
+
 // Only allow letters, numbers, and underscore in labels
 func IsValidLabel(label string) bool {
-	// A label must be longer than one letter:
-	if len(label) < 2 {
+	// A label must be longer than one byte:
+	if len(label) == 0 {
 		return false
 	}
 	// A label can't begin with a hyphen
