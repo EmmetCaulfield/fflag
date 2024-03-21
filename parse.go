@@ -278,7 +278,7 @@ NEXTARG:
 					fs.Failf("short flag '%s' in cluster '%s' is not defined", s, arg)
 					continue
 				}
-				err = flag.Set(nil)
+				err = flag.Set(nil, i)
 				if err != nil {
 					fs.Failf("failed to set short flag '%s' in cluster '%s'", s, arg)
 					continue
@@ -298,7 +298,7 @@ NEXTARG:
 			}
 		}
 		if argType.HasParam() {
-			err = flag.Set(param)
+			err = flag.Set(param, i)
 			if err != nil {
 				fs.Failf("failed to set flag `%s` with '%s'", flag.String(), param)
 			}
@@ -308,7 +308,7 @@ NEXTARG:
 		next, err := fs.InputArgs.Front()
 		if err != nil {
 			// End of InputArgs
-			err = flag.Set(nil)
+			err = flag.Set(nil, i)
 			if err != nil {
 				fs.Failf("failed to set flag `%s` at EOL with no parameter", flag.String())
 			}
@@ -318,14 +318,14 @@ NEXTARG:
 		flags, param, nextArgType := parseSingleArg(next)
 		if !nextArgType.IsFlag() {
 			// Not a flag, try it as a parameter
-			err = flag.Set(param)
+			err = flag.Set(param, i)
 			if err != nil {
 				fs.Failf("failed to set flag `%s` with '%s'", flag.String(), param)
 			}
 			continue NEXTARG
 		}
 		// Next arg is a flag, current flag has no parameter
-		err = flag.Set(nil)
+		err = flag.Set(nil, i)
 		if err != nil {
 			fs.Failf("failed to set flag `%s` with no parameter", flag.String())
 		}
