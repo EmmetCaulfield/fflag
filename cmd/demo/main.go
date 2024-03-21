@@ -13,11 +13,11 @@ func main() {
 	var help, nocase bool
 	var foo string
 	bar := []int{}
-	fflag.Var(&help, "help", "print a help message", fflag.WithShortcut('?'))
-	fflag.Var(&nocase, "ignore-case", "ignore case in patterns",
-		fflag.WithShortcut('i'), fflag.WithAlias("", 'y', true), fflag.NotImplemented())
-	fflag.Var(&foo, "foo", "test setting a string")
-	fflag.Var(&bar, "bar", "test setting an int slice", fflag.WithShortcut('b'))
+	fflag.Var(&help, '?', "help", "print a help message")
+	fflag.Var(&nocase, 'i', "ignore-case", "ignore case in patterns",
+		fflag.WithAlias('y', "", true), fflag.NotImplemented())
+	fflag.Var(&foo, 0, "foo", "test setting a string", fflag.WithRepeats(true))
+	fflag.Var(&bar, 'b', "bar", "test setting an int slice")
 	afds := fflag.CommandLine.AlignedFlagDescriptions("  ", "  ", "")
 	fmt.Println(strings.Join(afds, "\n"))
 	fflag.Parse()
