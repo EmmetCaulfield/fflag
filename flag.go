@@ -256,6 +256,9 @@ type Flag struct {
 }
 
 const IdSep string = "/"
+
+// ASCII character used as a placeholder meaning "there is no short
+// option" in a variety of contexts.
 const NoShort rune = rune(0)
 
 func ID(letter rune, label string) string {
@@ -263,7 +266,7 @@ func ID(letter rune, label string) string {
 	// (e.g. head, tail), which has NEITHER a normal valid shortcut
 	// nor a normal valid long flag
 	if letter == NoShort && len(label) == 0 {
-		return "\u0000" + IdSep
+		return string(NoShort) + IdSep
 	}
 	// Otherwise, we require either the shortcut or the long flag to
 	// be valid
@@ -283,6 +286,17 @@ const ErrRuneEmptyStr rune = -17
 const ErrRuneIdSepBad rune = -18
 const ErrRuneIdPartsBad rune = -19
 
+func emptyOrNoShort(s string) bool {
+	if len(s) == 0 {
+		return true
+	}
+	// The NoShort indicator is always a single byte
+	if len(s) == 1 && rune(s[0]) == NoShort {
+		return true
+	}
+	return false
+}
+
 func UnID(id string) (rune, string) {
 	if id == "" {
 		return ErrRuneEmptyStr, ""
@@ -291,8 +305,8 @@ func UnID(id string) (rune, string) {
 	if len(parts) != 2 {
 		return ErrRuneIdSepBad, ""
 	}
-	if parts[0] == "" && parts[1] == "" {
-		return rune(0), ""
+	if parts[1] == "" && emptyOrNoShort(parts[0]) {
+		return NoShort, ""
 	}
 	// Get first rune in parts[0]
 	var letter rune
@@ -579,6 +593,12 @@ func WithDefault(def interface{}) FlagOption {
 func WithRepeats(ignore bool) FlagOption {
 	return func(f *Flag) {
 		f.Type.SetRepeatsBit()
+		if ignore {
+			f.Type.SetIgnoreRepeatsBit()
+		} else {
+			// Shouldn't be necessary, but...
+			f.Type.ClrIgnoreRepeatsBit()
+		}
 	}
 }
 
