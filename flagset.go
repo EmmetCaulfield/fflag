@@ -156,7 +156,7 @@ func (fs *FlagSet) LookupLabel(label string) *Flag {
 // LookupShortcut returns the Flag structure of the shortcut flag,
 // returning nil if none exists.
 func (fs *FlagSet) LookupShortcut(r rune) *Flag {
-	if r == rune(0) {
+	if r == NoShort {
 		return nil
 	}
 	if f, ok := fs.LetterDict[r]; ok {
@@ -183,6 +183,7 @@ func (fs *FlagSet) AddFlag(f *Flag) error {
 	if f == nil {
 		return fmt.Errorf("cannot add nil flag")
 	}
+	// We must have EITHER a valid label OR a valid letter OR both
 	if !IsValidLabel(f.Label) {
 		if !IsValidShortcut(f.Letter) {
 			return fmt.Errorf("flag has neither a label nor a shortcut letter")
@@ -192,11 +193,11 @@ func (fs *FlagSet) AddFlag(f *Flag) error {
 		}
 		f.Label = ""
 	}
-	if f.Letter != rune(0) && !IsValidShortcut(f.Letter) {
+	if f.Letter != NoShort && !IsValidShortcut(f.Letter) {
 		if !f.IsLabelAlias() {
 			return fmt.Errorf("shortcut '%c' for '%s' is invalid", f.Letter, f.Label)
 		}
-		f.Letter = rune(0)
+		f.Letter = NoShort
 	}
 	fs.Infof("Adding: %s, %c", f.Label, f.Letter)
 	if len(f.Label) > 0 {

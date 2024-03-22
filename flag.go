@@ -1,9 +1,6 @@
 // The `fflag` package provides GNU/POSIX style command-line argument
 // parsing with the functional options pattern.
 //
-//   * POSIX: https://pubs.opengroup.org/onlinepubs/9699919799/basedefs/V1_chap12.html
-//   * GNU: https://www.gnu.org/software/libc/manual/html_node/Argument-Syntax.html
-//
 // It is somewhat inspired by the `pflag` package in some respects,
 // but significantly different in others. The most significant
 // difference is that there is only one `Var()` function: the type of
@@ -257,8 +254,9 @@ type Flag struct {
 
 const IdSep string = "/"
 
-// ASCII character used as a placeholder meaning "there is no short
-// option" in a variety of contexts.
+// A non-numeric, non-alphabetic ASCII character other than '?' used
+// as a placeholder meaning "there is no short option" in a variety of
+// contexts.
 const NoShort rune = rune(0)
 
 func ID(letter rune, label string) string {
@@ -277,20 +275,12 @@ func ID(letter rune, label string) string {
 	return ""
 }
 
-// Negative runes in the range -16 to -1 (U+FFF0 to U+FFFF) are
-// Unicode "Specials", notably U+FFFD (-3), the "Unicode replacement
-// character", so we avoid this range for error indication, but
-// otherwise use negative rune values to indicate an error in cases
-// where it's more convenient than a separate `error` return.
-const ErrRuneEmptyStr rune = -17
-const ErrRuneIdSepBad rune = -18
-const ErrRuneIdPartsBad rune = -19
-
 func emptyOrNoShort(s string) bool {
 	if len(s) == 0 {
 		return true
 	}
-	// The NoShort indicator is always a single byte
+	// The NoShort indicator is always a single byte, so we don't have
+	// to extract the first rune, we can just treat it like a byte.
 	if len(s) == 1 && rune(s[0]) == NoShort {
 		return true
 	}
@@ -308,12 +298,12 @@ func UnID(id string) (rune, string) {
 	if parts[1] == "" && emptyOrNoShort(parts[0]) {
 		return NoShort, ""
 	}
-	// Get first rune in parts[0]
-	var letter rune
-	for _, char := range parts[0] {
-		letter = char
-		break
+
+	letter, tail := FirstRune(parts[0])
+	if letter < 0 || tail != "" {
+		return ErrRuneShortBad, ""
 	}
+
 	if IsValidShortcut(letter) || IsValidLabel(parts[1]) {
 		return letter, parts[1]
 	}
@@ -486,13 +476,13 @@ func (f *Flag) GetTypeTag() string {
 // version, e.g. "-x, --example", otherwise just the version that's
 // defined, e.g. "-x" or "--example"
 func (f *Flag) String() string {
-	if f.Letter != rune(0) && len(f.Label) > 1 {
+	if f.Letter != NoShort && len(f.Label) > 1 {
 		return "-" + string(f.Letter) + ", --" + f.Label
 	}
 	if len(f.Label) > 1 {
 		return "--" + f.Label
 	}
-	if f.Letter != rune(0) {
+	if f.Letter != NoShort {
 		return "-" + string(f.Letter)
 	}
 	return ""
@@ -501,7 +491,7 @@ func (f *Flag) String() string {
 // Returns f.String() wrapped in extra stuff for help/usage output
 func (f *Flag) FlagString() string {
 	buf := &bytes.Buffer{}
-	if f.Letter == rune(0) {
+	if f.Letter == NoShort {
 		buf.WriteString(`    `)
 	}
 	buf.WriteString(f.String())
@@ -529,6 +519,23 @@ func (f *Flag) DescString() string {
 	}
 	// TODO(emmet): handle non-aliases
 	return f.Usage
+}
+
+// Provides a sort key for sorting flags in the conventional order
+// based on the short and long versions of the flag.
+//
+// GNU manpages present flags (within a group) in lexicographic order,
+// ignoring the distinction between long and short flags. That is, a
+// flag `--bat` with no short will appear after `-a, --ant` and before
+// `-c, --cat`. Case is ignored in the sort, but uppercase shorts are
+// presented before lowercase shorts.
+func (f *Flag) SortKey() string {
+	if f.Letter == NoShort {
+		return f.Label
+	}
+	// TODO(emmet): think about special case of no long and no short
+	// used for -NUM
+	return string(f.Letter) + f.Label
 }
 
 type FlagOption = func(f *Flag)
@@ -692,10 +699,13 @@ func (f *Flag) NewAlias(letter rune, label string, opts ...FlagOption) *Flag {
 	// alias has same type as target except that the appropriate alias
 	// bits are set
 	flagType := f.Type
-	if len(label) > 1 && IsValidLabel(label) {
+	if IsValidLabel(label) {
 		flagType.SetLabelAliasBit()
 	}
-	if letter != rune(0) && IsValidShortcut(letter) {
+	if letter == 0 {
+		letter = NoShort
+	}
+	if letter == NoShort || IsValidShortcut(letter) {
 		flagType.SetLetterAliasBit()
 	}
 	if !flagType.TstAliasBits() {
@@ -753,26 +763,16 @@ func (f *Flag) HasCallback() bool {
 	return f.Callback != nil
 }
 
-// Only allow letters and numbers as shortcut letters
+// Only allow letters, numbers, and the question-mark as shortcut
+// letters
 func IsValidShortcut(r rune) bool {
 	return r == '?' || unicode.IsLetter(r) || unicode.IsNumber(r)
-}
-
-func FirstRune(s string) rune {
-	if len(s) == 0 {
-		return ErrRuneEmptyStr
-	}
-	for _, char := range s {
-		return char
-	}
-	// This is impossible
-	panic("unreachable code")
 }
 
 // Only allow letters, numbers, and underscore in labels
 func IsValidLabel(label string) bool {
 	// A label must be longer than one byte:
-	if len(label) == 0 {
+	if len(label) < 2 {
 		return false
 	}
 	// A label can't begin with a hyphen
