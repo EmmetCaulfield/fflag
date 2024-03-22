@@ -86,71 +86,65 @@
 //   * `WithCallback(callback func(...))`
 //
 // `WithRepeats()` allows repeat appearances of a flag, `AsCounter()`
-// causes the number of occurrences to be counted, and
-// `WithCallback()` causes the given callback function to be called
-// every time the flag appears on the command-line.
+// causes the number of occurrences to be counted (if the value
+// pointer is a number), and `WithCallback()` causes the given
+// callback function to be called EVERY TIME the flag appears on the
+// command-line: it is up to the callback to modify the value
+// appropriately, etc.
 //
-// Several utilities allow `-v/--verbose` to be repeated for
-// increasing levels of verbosity.
+// For example, several utilities allow `-v/--verbose` to be repeated
+// for increasing levels of verbosity.
 //
 //     int verbosity
 //     f := NewFlag(&verbosity, 'v', "verbose", "increase verbosity", AsCounter())
 //
-// Note that it would be an error to supply BOTH the `AsCounter()` and
-// `WithCallback()` options for the same flag because `AsCounter()`
-// must modify the `value` while `WithCallback()` leaves modification
-// of the value to the callback function for flexibility.
+// Note that it would be an error to supply more than one of these
+// options since they are pairwise either redundant of contradictory.
 //
 // If a default is supplied, a boolean value will be toggled if the
-// flag is given.
+// flag appears.
 //
 //     var hard bool
 //     fflag.Var(&hard, "easy", "use easy mode", fflag.WithDefault(true))
 //
 // In this case, `hard` will default to `true` and become false if
-// `--easy` appears on the command line.
+// `--easy` appears on the command line. If repeats are allowed, the
+// value will toggle between `true` and `false`, which is admittedly
+// weird, but if you do stupid things, expect stupid results.
 //
-// While it is an error to repeat a command-line argument whose
-// `value` argument is a pointer to a scalar (but see `WithRepeats()`
-// and `AsCounter()` options), if the value argument is a pointer to a
-// slice, successive invocations will result in successive values
-// being appended to the slice.
+// Repeated appearances of a flag are _not_ an error if the value
+// argument is a pointer to a slice. Then, successive invocations will
+// result in successive values being appended to the slice.
 //
 //     values := []bool{}
 //     NewFlag(&values, 'x', "example", "example flag")
 //
 // The sole exception to this rule is where a callback function is
-// supplied:
+// supplied. When a callback is supplied, the callback is responsible
+// for EVERYTHING.
 //
-//     var value string
-//     f := NewFlag(&value, "file", WithCallback(MyFunc))
+//     f := NewFlag(&value, 'f', "file", WithCallback(MyFunc))
 //
-// In this case, the callback function is called with the given
-// pointer (interface), label, parameter, and position on the
-// command-line. Thus a program, `prog`, with the above "file" flag,
-// could be invoked as follows:
+// The callback function is called with the given pointer (interface),
+// short option, long option, argument, and position on the
+// command-line. Consider a program `prog`, with the above "file"
+// flag, invoked as follows:
 //
-//     prog --file foo.txt --file bar.txt
+//     prog -f foo.txt --file bar.txt
 //
 // Here, `MyFunc` would be called twice as:
 //
-//     MyFunc(&value, "file", "foo.txt", 1)
-//     MyFunc(&value, "file", "bar.txt", 3)
+//     MyFunc(&value, 'f', "file", "foo.txt", 1)
+//     MyFunc(&value, 'f', "file", "bar.txt", 3)
 //
-// Notably, `value` is NOT set by `fflag` if a callback is supplied. A
-// more usual setup would be:
-//
-//     var files []string
-//     f := NewFlag(&files, "file", WithUsage("files to process"))
-//
-// After parsing, `files` would have contents equivalent to:
-//
-//     files := []string{"foo.txt", "bar.txt"}
+// The `value` is NOT set by `fflag` if a callback is supplied.
 //
 // For unary (non-boolean) flags, a default can be supplied:
 //
 //     var files []string
 //     fflag.Var(&files, "file", WithDefault([]string{"/dev/null"})
+//
+// TODO(emmet): consider what "default" means as bit more.
 //
 // The value will be set to the default if the argument is not given.
 //
@@ -165,9 +159,11 @@
 // of 3 values --- `read`, `skip`, and `recurse` --- with the default
 // being `read`:
 //
-//     var string dir
-//     f := NewFlag(&dir, "directories", WithDefault([]string{
-//         "read", "skip", "recurse"}))
+//     var string diract
+//     f := NewFlag(&diract, 0, "directories",
+//         "if an input file is a directory use ACTION to process it",
+//         WithDefault([]string{"read", "skip", "recurse"}),
+//         WithTypeTag("ACTION"))
 //
 // The actual default is the first value in the slice.
 
@@ -544,7 +540,7 @@ type AliasOption = func(f *Flag)
 
 func WithParent(fs *FlagSet) FlagOption {
 	return func(f *Flag) {
-		if f.parentFlagSet != nil {
+		if f.parentFlagSet != nil && f.parentFlagSet != fs {
 			panic("parent flagset already set")
 		}
 		f.parentFlagSet = fs
@@ -599,6 +595,19 @@ func WithDefault(def interface{}) FlagOption {
 
 func WithRepeats(ignore bool) FlagOption {
 	return func(f *Flag) {
+		if f.HasCallback() {
+			f.Warnf("WithRepeats() is redundant if WithCallback() is used (%s)", f)
+			return
+		}
+		if f.IsCounter() {
+			f.Warnf("WithRepeats() is redundant if AsCounter() is used (%s)", f)
+			return
+		}
+		if !f.IsScalar() {
+			f.Warnf("WithRepeats() is redundant if the value is not a scalar (%s)", f)
+			return
+		}
+
 		f.Type.SetRepeatsBit()
 		if ignore {
 			f.Type.SetIgnoreRepeatsBit()
@@ -619,6 +628,9 @@ func AsCounter() FlagOption {
 		}
 		if !f.IsNumber() {
 			panic("counter variable must be a number")
+		}
+		if f.IsRepeatable() {
+			f.Warnf("WithRepeats() is irrelevant if AsCounter() is used (%s)", f)
 		}
 		f.Type.SetCounterBit()
 	}
@@ -796,4 +808,8 @@ func (f *Flag) Failf(format string, args ...interface{}) {
 
 func (f *Flag) Infof(format string, args ...interface{}) {
 	f.ParentFlagSet().Infof(format, args...)
+}
+
+func (f *Flag) Warnf(format string, args ...interface{}) {
+	f.ParentFlagSet().Warnf(format, args...)
 }

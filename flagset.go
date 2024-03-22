@@ -292,6 +292,10 @@ func (fs *FlagSet) Infof(format string, args ...interface{}) {
 	fmt.Fprintf(fs.Output, "INFO: " + format + "\n", args...)
 }
 
+func (fs *FlagSet) Warnf(format string, args ...interface{}) {
+	fmt.Fprintf(fs.Output, "WARNING: " + format + "\n", args...)
+}
+
 
 func (fs *FlagSet) FlagStringMaxLen() int {
 	maxLen := 0
