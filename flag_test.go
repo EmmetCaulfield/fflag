@@ -222,4 +222,15 @@ func TestVectorSet(t *testing.T) {
 	if !reflect.DeepEqual(a, b) {
 		t.Errorf("value mismatch: expected %v, got %v", b, a)
 	}
+
+	i8a := []int8{3, 1, 4, 1, 5, 9, 2}
+	i8v := []int8{}
+	f = NewFlag(&i8v, 'l', "list", "a list of digits", WithListSeparator('|'))
+	if f == nil {
+		t.Error("error creating int8 slice flag")
+	}
+	f.Set("3|1|4|1|5|9|2", 0)
+	if !reflect.DeepEqual(i8a, i8v) {
+		t.Errorf("value mismatch: expected %v, got %v", i8a, i8v)
+	}
 }

@@ -180,6 +180,8 @@ import (
 	"github.com/EmmetCaulfield/fflag/pkg/types"
 )
 
+var DefaultListSeparator string = ","
+
 type FlagError struct {
 	s string
 }
@@ -248,6 +250,7 @@ type Flag struct {
 	FileFlag      *Flag
 	Usage         string
 	Callback      CallbackFunction
+	ListSeparator string
 	parentFlagSet *FlagSet
 }
 
@@ -382,6 +385,11 @@ func (f *Flag) Set(value interface{}, argPos int) error {
 			return &FlagError{"cannot set nil value for non-bool with no default"}
 		}
 	} else if !f.InDefaults(value) {
+		// TODO(emmet): consider supporting constrained defaults in a
+		// command-line list. It's reasonable to expect that each item
+		// in a list optarg would be checked against the list in
+		// f.Default (if any), but in reality, a non-scalar optarg
+		// (e.g. `-x foo,bar,baz`) will fail here.
 		f.Failf("value %v not found in defaults %v for '%s'", value, f.Default, f)
 		return &FlagError{"value constrained by defaults"}
 	}
@@ -394,7 +402,7 @@ func (f *Flag) Set(value interface{}, argPos int) error {
 	var ok bool
 	var str string
 	if str, ok = value.(string); !ok {
-		str = types.StrConv(value)
+		str = types.StrConv(value, types.WithSep(f.ListSeparator))
 		if str == "" {
 			f.Failf("failed to convert '%v' to a nonempty string in '%s'", value, f)
 			return &FlagError{"cannot convert value to string"}
@@ -402,7 +410,7 @@ func (f *Flag) Set(value interface{}, argPos int) error {
 	}
 
 	// Set the value from the string version
-	err := types.FromStr(f.Value, str)
+	err := types.FromStr(f.Value, str, types.WithSep(f.ListSeparator))
 	if err != nil {
 		f.Failf("failed to convert '%s' to %T: %v", str, f.Value, err)
 		return err
@@ -601,6 +609,15 @@ func WithValue(value string) AliasOption {
 	}
 }
 
+func WithListSeparator(sep rune) FlagOption {
+	return func(f *Flag) {
+		if !types.IsSlice(f.Value) {
+			panic("cannot set separator for non-list value")
+		}
+		f.ListSeparator = string(sep)
+	}
+}
+
 func WithAlias(letter rune, label string, obsolete bool) FlagOption {
 	return func(f *Flag) {
 		var flag *Flag = nil
@@ -759,11 +776,12 @@ func NewFlag(value interface{}, letter rune, label string, usage string, opts ..
 		}
 	}
 	f := &Flag{
-		Value:  value,
-		Label:  label,
-		Letter: letter,
-		Usage:  usage,
-		Count:  0,
+		Value:         value,
+		Label:         label,
+		Letter:        letter,
+		Usage:         usage,
+		Count:         0,
+		ListSeparator: DefaultListSeparator,
 	}
 	if types.IsSlice(value) {
 		f.Type.SetRepeatsBit()
