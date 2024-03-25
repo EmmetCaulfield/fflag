@@ -61,6 +61,12 @@ func (tp *TypeId) TstSetterBit() bool  { return *tp&SetterT != 0 }
 func (tp *TypeId) TstOtherBit() bool   { return *tp&OtherT != 0 }
 func (tp *TypeId) TstAnyNumBit() bool  { return *tp&IntT != 0 || *tp&UintT != 0 || *tp&FloatT != 0 }
 
+// Returns true if two types have the same underlying basic type
+func SameBaseType(a, b TypeId) bool {
+	mask := ^(PointerT | SliceT)
+	return a&mask == b&mask
+}
+
 // Returns the number of bits or zero if not applicable
 func (tp *TypeId) BitSize() int {
 	n := *tp & NumBits
@@ -82,6 +88,9 @@ func IntBits() TypeId {
 
 // Returns a TypeId corresponding to the type within the given interface
 func Type(ix interface{}) TypeId {
+	if ix == nil {
+		return TypeId(0)
+	}
 	switch ix.(type) {
 	// Boolean
 	case bool:
@@ -217,7 +226,7 @@ func Type(ix interface{}) TypeId {
 
 	// The only useful thing we can do is tell whether the thing
 	// behind the interface `ix` implements the SetValue interface. We
-	// don't get to determine how it's implemented, so wether it's a
+	// don't get to determine how it's implemented, so whether it's a
 	// pointer or a slice or whatever is useless.
 	//
 	// If we're going to start looking into lists of pointers or

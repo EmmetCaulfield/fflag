@@ -1,0 +1,71 @@
+package types
+
+import(
+    "fmt"
+    "strconv"
+
+    "golang.org/x/exp/constraints"
+)
+
+func pow2(n int) uint64 {
+	return uint64(1) << n
+}
+
+func pow2m1(n int) uint64 {
+	u := uint64(1)
+	for i := 0; i < n-1; i++ {
+		u = (u << 1) | uint64(1)
+	}
+	return u
+}
+
+// Returns the max and min values for a type
+func (tp *TypeId) MinAndMax() (int64, uint64) {
+	if tp.TstBoolBit() {
+		return 0, 1
+	}
+	n := tp.BitSize()
+	if tp.TstIntBit() {
+		return int64(-pow2(n - 1)), pow2m1(n - 1)
+	}
+	if tp.TstUintBit() {
+		return 0, pow2m1(n)
+	}
+	if tp.TstFloatBit() {
+		if n == 32 {
+			return int64(-pow2(24)), pow2(24)
+		}
+		return int64(-pow2(53)), pow2(53)
+	}
+	return 0, 0
+}
+
+type Number interface {
+	constraints.Integer | constraints.Float
+}
+
+// RangeTest returns nil if the value of the test type is
+// representable by the value of the reference type:
+func RangeTest[T Number, R Number](t T, r R) error {
+	tt := Type(t)
+	tr := Type(r)
+	// If the types are the same, there's no issue:
+	if tt == tr {
+		return nil
+	}
+	// If the reference type has more bits than the test type, but
+	// they're otherwise the same, there's no issue:
+	if (tt & ^NumBits) == (tr & ^NumBits) {
+		if tt.BitSize() <= tr.BitSize() {
+			return nil
+		}
+		// The reference type has fewer bits than the test type, so we
+		// need to check the value
+	}
+	rmin, rmax := tr.MinAndMax()
+	if uint64(t) <= rmax && int64(t) >= rmin {
+		return nil
+	}
+	return fmt.Errorf("value %v<%T> is not representable in %T", t, t, r)
+}
+

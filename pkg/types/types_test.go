@@ -21,6 +21,29 @@ func (s VSet) Set(string) error {
 	return nil
 }
 
+func TestPow(t *testing.T) {
+	testCases := []struct {
+		n int
+		m uint64
+	}{
+		{8, 0xFF},
+		{16, 0xFFFF},
+		{32, 0xFFFFFFFF},
+		{64, 0xFFFFFFFFFFFFFFFF},
+	}
+	for _, test := range testCases {
+		u := pow2m1(test.n)
+		if u == 0 || test.m != u {
+			t.Errorf("pow2m1 failure: expected %d, got %d", test.m, u)
+		}
+
+		u = pow2(test.n)
+		if (test.n != 64 && u == 0) || test.m+1 != u {
+			t.Errorf("pow2 failure: expected %d, got %d", test.m, u)
+		}
+	}
+}
+
 func TestSetTstClr(t *testing.T) {
 	var tp TypeId
 	testCases := []struct {
