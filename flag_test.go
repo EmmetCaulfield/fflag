@@ -104,7 +104,7 @@ func TestBasicSet(t *testing.T) {
 	}
 
 	var i8 int8 = 11
-	f = NewFlag(&i8, 0, "foo", "an 8-bit int flag", WithDefault(25), WithRepeats(false))
+	f = NewFlag(&i8, 0, "foo", "an 8-bit int flag", WithDefault(int8(25)), WithRepeats(false))
 	if f == nil || i8 != 25 {
 		t.Errorf("failed to create int8 flag with default (%d != 25)", i8)
 	}
@@ -128,6 +128,28 @@ func TestBasicSet(t *testing.T) {
 		t.Errorf(`wrong repeat count; expected 4, got %d`, f.Count)
 	}
 
+	def := []int8{5, 10, 15, 20}
+	f = NewFlag(&i8, 0, "foo", "an 8-bit int flag", WithDefault(def), WithRepeats(false))
+	if f == nil || i8 != 5 {
+		t.Errorf("failed to create int8 flag with slice default (%d != 5)", i8)
+	}
+	err = f.Set(11, 0)
+	if err == nil || i8 == 11 {
+		t.Errorf("unexpected success setting int8 flag with slice default (%d !in %v)", i8, def)
+	}
+	err = f.Set("15", 0)
+	if err != nil || i8 != 15 {
+		t.Errorf("failed to create int8 flag with value from default slice (%d != 15)", i8)
+	}
+	err = f.Set(300, 0)
+	if err == nil {
+		t.Errorf("unexpected success setting out-of-range value %v: %v", i8, err)
+	}
+	if i8 != 15 {
+		t.Errorf("unexpected value change %d<%T> != %d", i8, i8, 15)
+	}
+	t.Logf("%d", int8(0b00101100))
+
 	var u8 uint8
 	f = NewFlag(&u8, 0, "foo", "an 8-bit unsigned int flag", WithRepeats(true))
 	err = f.Set(100, 0)
@@ -148,6 +170,7 @@ func TestBasicSet(t *testing.T) {
 	if err != nil || u16 != 1 {
 		t.Errorf("failed to set basic counter; expected 1, got %d", u16)
 	}
+	// The value argument of a counter set is ignored
 	f.Set(nil, 0)
 	f.Set("something", 0)
 	f.Set(-100000000, 0)

@@ -165,12 +165,15 @@
 //         WithDefault([]string{"read", "skip", "recurse"}),
 //         WithTypeTag("ACTION"))
 //
-// The actual default is the first value in the slice.
+// The actual default is the first value in the slice. The remaining
+// values in the slice constrain the set of acceptable values.
 
 package fflag
 
 import (
 	"bytes"
+	"fmt"
+	"os"
 	"strings"
 	"unicode"
 
@@ -365,30 +368,40 @@ func (f *Flag) Set(value interface{}, argPos int) error {
 	}
 
 	if value == nil {
-		var boolp *bool
-		var ok, def bool
-		if boolp, ok = f.Value.(*bool); !ok {
-			f.Failf("flag.Set(nil) called for non-boolean flag '%s' of type %T", f.Label, f.Value)
-			return &FlagError{"cannot set nil value for non-bool"}
+		if boolp, ok := f.Value.(*bool); ok {
+			// If a default was given, use it, otherwise the zero
+			// value (`false`) returned by the type assertion is the
+			// default we want in the absence of a stipulated default
+			def, _ := f.GetDefault().(bool)
+			*boolp = !def
+			return nil
 		}
-		// If a default was given, use it, otherwise the zero
-		// value (`false`) returned by the type assertion is the
-		// default we want in the absence of a stipulated default
-		def, _ = f.GetDefault().(bool)
-		*boolp = !def
-		return nil
+		value = f.GetDefault()
+		if value == nil {
+			f.Failf("flag.Set(nil) called for flag '%s' with no default", f)
+			return &FlagError{"cannot set nil value for non-bool with no default"}
+		}
+	} else if !f.InDefaults(value) {
+		f.Failf("value %v not found in defaults %v for '%s'", value, f.Default, f)
+		return &FlagError{"value constrained by defaults"}
 	}
 
-	if str, ok := value.(string); ok {
-		err := types.FromStr(f.Value, str)
-		if err != nil {
-			f.Failf("failed to convert '%s' to %T: %v", str, f.Value, err)
+	// TODO(emmet): look at doing this this other than by
+	// round-tripping via a string; OTOH, the value will usually be a
+	// string anyway.
+
+	// Convert the value to a string if it's not already one
+	var ok bool
+	var str string
+	if str, ok = value.(string); !ok {
+		str = types.StrConv(value)
+		if str == "" {
+			f.Failf("failed to convert '%v' to a nonempty string in '%s'", value, f)
+			return &FlagError{"cannot convert value to string"}
 		}
-		return err
 	}
 
-	// Last-ditch attempt: round-trip the value
-	str := types.StrConv(value)
+	// Set the value from the string version
 	err := types.FromStr(f.Value, str)
 	if err != nil {
 		f.Failf("failed to convert '%s' to %T: %v", str, f.Value, err)
@@ -415,10 +428,45 @@ func (f *Flag) GetDefault() interface{} {
 	if f.AliasFor != nil {
 		f = f.AliasFor
 	}
-	if f.GetDefaultLen() > 0 {
-		return types.ItemAt(f.Default, 0)
+	if f.AliasFor != nil {
+		panic("double aliases are not allowed")
+	}
+	if types.IsSlice(f.Default) {
+		if types.SliceLen(f.Default) > 0 {
+			return types.ItemAt(f.Default, 0)
+		}
+		// Default is an empty slice. Odd.
+		panic("default cannot be an empty slice")
 	}
 	return f.Default
+}
+
+// InDefaults() returns true if the argument is in the f.Default slice
+// or if f.Default is not a slice, otherwise it returns false.
+func (f *Flag) InDefaults(ix interface{}) bool {
+	if f.AliasFor != nil {
+		f = f.AliasFor
+	}
+	if f.AliasFor != nil {
+		panic("double aliases are not allowed")
+	}
+	if !types.IsSlice(f.Default) {
+		return true
+	}
+	for i := 0; i < types.SliceLen(f.Default); i++ {
+		d := types.ItemAt(f.Default, i)
+		v, err := types.CoerceScalar(d, ix)
+		if err != nil {
+			// TODO(emmet): think this through
+			f.Failf("error coercing %T (arg) to %T (defaults): %v", ix, d, err)
+			return false
+		}
+		// fmt.Fprintf(os.Stderr, "%+v<%T> ?= %+v<%T> (%t) %+v<%T>\n", d, d, v, v, d == v, ix, ix)
+		if d == v {
+			return true
+		}
+	}
+	return false
 }
 
 func (f *Flag) GetDefaultDescription() string {
@@ -585,10 +633,29 @@ func WithAlias(letter rune, label string, obsolete bool) FlagOption {
 
 func WithDefault(def interface{}) FlagOption {
 	return func(f *Flag) {
+		defType := types.Type(def)
+		// Always allow the default to be a string or a slice of
+		// strings since the value-to-set will come from the
+		// command-line and be a string anyway
+		if !defType.TstStringBit() {
+			valType := types.Type(f.Value)
+			if valType.TstSetterBit() {
+				// We shouldn't be here if f.Value implements the
+				// SetValue interface, because that always takes a
+				// string so the default should be a string.
+				panic("non-string default for object implementing SetValue interface")
+			}
+			if !types.SameBaseType(valType, defType) {
+				fmt.Fprintf(os.Stderr, "%016b != %016b for '%#v'", valType, defType, f)
+				panic("non-string default has different base type")
+			}
+		}
+		// Set the default value
 		f.Default = def
+		def = f.GetDefault()
 		err := types.FromStr(f.Value, types.StrConv(def))
 		if err != nil {
-			f.Failf("failed to set default value for '%s'", f.Label)
+			panic("failed to set default")
 		}
 	}
 }
