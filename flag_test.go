@@ -8,7 +8,7 @@ import (
 
 func setup() {
 	CommandLine.OnFail.SetContinueBit()
-	// CommandLine.OnFail.SetSilentBit()
+	CommandLine.OnFail.SetSilentBit()
 }
 
 func runesToAscii(src string) string {
@@ -30,10 +30,10 @@ func TestIdRoundtrip(t *testing.T) {
 		id     string
 		expect bool
 	}{
-		{'e', "example", "e/example", true},
-		{'e', "", "e/", true},
-		{0, "example", "\u0000/example", true},
-		{0, "", "\u0000/", true},
+		{'e', "example", "e" + IdSep + "example", true},
+		{'e', "", "e" + IdSep, true},
+		{NoShort, "example", string(NoShort) + IdSep + "example", true},
+		{NoShort, "", string(NoShort) + IdSep, true},
 		{ErrRuneEmptyStr, "", "", true},
 	}
 	for i, test := range table {
