@@ -1,37 +1,37 @@
-// The `fflag` package provides POSIX (short) and GNU (long)
-// command-line argument parsing with, for the programmer, the
-// functional options pattern.
+// Package `fflag` provides POSIX (short) and GNU (long) command-line
+// argument parsing with, for the programmer, the functional options
+// pattern.
 //
 // It is somewhat inspired by the `pflag` package in some respects,
 // but very significantly different in others. The most significant
-// difference is that there is only one `Var()` function: the type of
-// the flag is determined by the type of the first argument (rather
-// than the function name), which MUST be a pointer to a basic type, a
-// slice of basic type, or a struct implementing the `SetValue`
-// interface (inspired by `pflag`).
+// difference is that there is only one `Var()` function (rather than
+// six dozen variations): the type of the flag is determined by the
+// type of the first argument (rather than the function name), which
+// _must_ be a pointer to a basic type, a slice of basic type, or a
+// struct implementing the `SetValue` interface (inspired by `pflag`).
 //
 // The other significant difference is the order of the short flag and
 // long flag in the `Var()` argument list, with the short flag coming
-// first as a `rune`, which must be a single UTF-8 short, most often
-// a single ASCII short or number. The reason for this is that short
-// flags are always listed first in manpages and other documentation,
-// so it's actually a bit weird of `pflag` to have reversed this
-// de-facto standard order and, in practice, I've found it handier to
-// obey the standard order than stick to the `flag` argument order.
+// first as a `rune`, most often a single ASCII letter or number. The
+// reason for this is that short flags are always listed first in
+// manpages and other documentation, so it's actually a bit weird of
+// `pflag` to have reversed this de-facto standard order and, in
+// practice, I've found it handier to obey the standard order than
+// stick to the reversed `flag` argument order.
 //
 // If there is no short flag, the zero value (0, `\0', or
 // `fflag.NoShort`) is used. The usual rules apply to long flags,
 // which must consist of letters and numbers, except that the ASCII
 // requirement has been relaxed. Any character satisfying
-// unicode.IsLetter() or unicode.IsNumber() or the hyphen '-' are
-// allowed. There is no attempt at (what `pflag` refers to as)
-// normalization, a very dubious utility: just use the long flag you
-// mean to use without weird capitalization.
+// unicode.IsLetter() or unicode.IsNumber(), or the ASCII hyphen/minus
+// character, '-', are allowed. There is _no attempt whatsoever_ at
+// (what `pflag` refers to as) normalization, a very dubious utility:
+// just use the long flag you mean to use without weird
+// capitalization.
 //
-// That said, `fflag` meets the GNU expectation that “users can
-// abbreviate the option names as long as the abbreviations are
-// unique”. This requires a ludicrous amount of extra effort, but it
-// exists as a clearly expressed requirement so we implement it.
+// That said, `fflag` meets the onerous GNU expectation that “users
+// can abbreviate the option names as long as the abbreviations are
+// unique”.
 //
 // `fflag` borrows the `Flag` and `FlagSet` names from `pflag`, adding
 // `FlagGroup`. The purpose of a flag group is to enable usage
@@ -43,41 +43,46 @@
 // default `FlagSet` (called `CommandLine` after `pflag`'s equivalent)
 // with `Var()`. The minimal call to `Var()` provides: a pointer to a
 // variable where the value of the flag is to be stored; the
-// single-short version of the flag as a rune (or 0 if none), e.g.,
-// 'h'; the long version of the flag (or "" if none), e.g. `--help`;
-// and a very brief description of the flag's purpose. For example:
+// single-short version of the flag as a rune (or `NoShort` if none),
+// e.g., 'h'; the long version of the flag (or `NoLong` if none),
+// e.g. `--help`; and a very brief description of the flag's
+// purpose. For example:
 //
+//     var value bool
 //     fflag.Var(&value, 'h', "help", "prints a help message to stdout")
 //
-// The first argument to `Var` must be a POINTER to one of:
+// The first argument to `Var` must be a _pointer_ to one of:
 //
 //   1) a basic datatype (e.g. `int8`, `float32`, `string`)
 //   2) a slice of basic datatype (e.g. `[]int8`, `[]string`)
 //   3) something implementing the `SetValue` interface
 //
-// Non-pointer arguments are rejected. If the argument implements the
-// `SetValue` interface, `fflag` neither modifies the argument itself
-// nor enforces any of its usual rules. If you pass something
-// implementing this interface, it's assumed that you will take care
-// of everything and don't want `fflag` to do anything other than pass
-// along the message “this flag appeared with this argument”.
+// Non-pointer `value` arguments will cause a `panic()`. As a rule,
+// `fflag` will `panic()` in the case of a programmer mistake (during
+// setup) and return an `error` otherwise (during argument parsing).
+//
+// If the value argument implements the `SetValue` interface, `fflag`
+// neither modifies the argument itself nor enforces any of its usual
+// rules. If you pass something implementing this interface, it's
+// assumed that you will take care of everything and don't want
+// `fflag` to do anything other than pass along the message “this flag
+// appeared with this argument”.
 //
 // A flag need not have a single-character shortcut. If there is no
-// shortcut, a 0 is given for the shortcut argument:
+// shortcut, a `fflag.NoShort` is given for the shortcut argument:
 //
-//    fflag.Var(&value, 0, "help", "prints a help message to stdout")
+//    fflag.Var(&value, fflag.NoShort, "help", "prints a help message to stdout")
 //
-// Punctuation (or other non-short, non-number) characters are not
-// normally allowed as shortcuts. The sole exception is '?' due to its
-// widespread use as an alias for "help", but this is prohibited by
-// POSIX, so if you want to use this, you have to enable it
-// explicitly.
+// Only letters and numbers are normally allowed as shortcuts. The
+// sole exception is '?' due to its widespread use as an alias for
+// "help", but this is prohibited by POSIX, so if you want to use
+// this, you have to enable it explicitly.
 //
 // Equally, a flag need not have a long version. If you wanted to have
 // `-?` as a short flag with no long version, you would do:
 //
 //    fflag.PosixRejectQuest = false
-//    fflag.Var(&value, '?', "", "prints a help message to stdout")
+//    fflag.Var(&value, '?', fflag.NoLong, "prints a help message to stdout")
 //
 // There is a special case (and common idiom) where NEITHER a long NOR
 // a short form is required: `-NUM` (as in `grep`, `head`, `tail`, and
@@ -86,17 +91,17 @@
 // a single hyphen. For example `head`'s `-n/--lines` is best
 // represented as:
 //
-//    int nlines
+//    uint nlines
 //    fflag.Var(&nlines, 'n', 'lines',
 //        "print the first NUM lines instead of the first 10",
-//        fflag.WithAlias(0, "", false), fflag.WithTypeTag("[-]NUM"))
+//        fflag.WithAlias(fflag.NoShort, fflag.NoLong, false),
+//        fflag.WithTypeTag("[-]NUM"))
 //
-// Obviously, this special case can only be used once, but it requires
-// no special logic since it is always an error to attempt to create a
-// flag (an alias is just a special flag) that shares the short or
-// long form of an existing flag.
+// Obviously, this special case can only be used once and attempting
+// to use it more than once is a programmer error that results in a
+// `panic()`.
 //
-// The simplest ordinary flag is a nullary boolean switch that takes
+// The simplest “vanilla” flag is a nullary boolean switch that takes
 // no parameter.
 //
 //     bool value
@@ -114,7 +119,7 @@
 // `WithRepeats()` allows repeat appearances of a flag, `AsCounter()`
 // causes the number of occurrences to be counted (if the value
 // pointer is a number), and `WithCallback()` causes the given
-// callback function to be called EVERY TIME the flag appears on the
+// callback function to be called _every time_ the flag appears on the
 // command-line. Much like a `value` (first) argument implementing
 // `SetValue`, `fflag` washes its hands of any further involvement,
 // and it becomes entirely up to the callback to modify the value
@@ -129,7 +134,7 @@
 //
 // Supplying more than one of these (pairwise redundant or
 // contradictory) options would result in a `panic()` since this would
-// be an obvious programming error, not something that could
+// be an obvious programmer error, not something that could
 // “accidentally” occur at runtime based on user input.
 //
 // An explicit default can be supplied with `WithDefault()`:
@@ -139,21 +144,22 @@
 //         fflag.WithDefault(true))
 //
 // In this case, `hard` will default to `true` and become false if
-// `--easy` appears on the command line. If repeats are allowed, the
-// value will toggle between `true` and `false`, which is admittedly
-// weird, but if you do stupid things, expect stupid results.
+// `--easy` appears on the command line. If repeats are allowed and
+// not ignored (`WithRepeat(false)`), the value will toggle between
+// `true` and `false`, which is admittedly weird, but if you do stupid
+// things, expect to win stupid prizes.
 //
-// Repeated appearances of a flag, while prohibited by default for
-// scalar value arguments, are _not_ an error if the value argument is
-// (a pointer to) a slice. In this case, successive invocations will
-// result in successive values being appended to the slice.
+// Repeated appearances of a flag are _not_ an error if the value
+// argument is (a pointer to) a slice. In this case, successive
+// invocations will result in successive values being appended to the
+// slice. This makes no sense for a nullary boolean flag.
 //
-//     values := []bool{}
+//     values := []int{}
 //     NewFlag(&values, 'x', "example", "example flag")
 //
 // The sole exception to this rule is where a callback function is
 // supplied. When a callback is supplied, the callback is responsible
-// for EVERYTHING.
+// for _everything_.
 //
 //     f := NewFlag(&value, 'f', "file", "supply a filename",
 //         WithCallback(MyFunc))
@@ -171,28 +177,34 @@
 //     MyFunc(&value, 'f', "file", "foo.txt", 1)
 //     MyFunc(&value, 'f', "file", "bar.txt", 3)
 //
-// The `value` is NOT set by `fflag` if a callback is supplied.
+// The `value` is _not_ set by `fflag` if a callback is supplied (or
+// if `value` implements the `SetValue` interface).
 //
 // For unary (non-boolean) flags, a default can be supplied:
 //
 //     var file string
 //     fflag.Var(&file, 'f', "file", "supply a filename",
-//         WithDefault("/dev/null"))
+//         fflag.WithDefault("/dev/null"))
 //
-// TODO(emmet): consider what "default" means as bit more.
+// The value will _always_ be set to the default.
 //
-// The value will be set to the default if the argument is NOT
-// given. This is EXACTLY equivalent to:
+// There exist a few utilities with options that differentiate between
+// the option appearing (at all) and the option appearing with an
+// argument. To support this, you must use `WithOptionalDefault()`
 //
-//     file := "/dev/null"
-//     fflag.Var(&file, 'f', "file", "supply a filename")
+//     var outdev := "/dev/stdout"
+//     fflag.Var(&outdev, 'o', "out", "supply an output device path",
+//         fflag.WithOptionalDefault("/dev/stderr"))
 //
-// Frankly, I'm not sure why anyone would want to use `WithDefault()`
-// for this.
+// In this case, if `-o` is _not_ supplied at all, `outdev` is not
+// changed and keeps the value "/dev/stdout"; if `-o` is supplied
+// _without an argument_, `outdev` changes to the default,
+// `"/dev/stderr"`, and if an argument is supplied, `outdev` is
+// changed to the given argument.
 //
-// However, if the value is a (pointer to a) scalar, but the default
-// is a slice, the value is constrained to the values in the default,
-// like an enum.
+// If the value is a (pointer to a) scalar, but the default is a
+// slice, the value is constrained to the values in the default, like
+// a kind of set or `enum`.
 //
 // Consider the `--directories` option of GNU `grep`. It can take one
 // of 3 values --- `read`, `skip`, and `recurse` --- with the default
@@ -223,11 +235,33 @@
 //
 //     $ prog -d foo
 //
+// There exist a few utilities with set-constrained options that
+// differentiate between the option appearing (at all) and the option
+// appearing with an argument. For example, `grep`'s `--color`
+// argument (with no option) is different from the option not being
+// given at all, but also different from the option being given with
+// an argument. This is rare, but (unfortunately) it exists in the
+// wild.
+//
+//     color := "never"
+//     fflag.Var(&file, fflag.NoShort, "color", "display matches in color",
+//         fflag.WithOptionalDefault([]string{"auto", "never", "always"}),
+//         fflag.WithTypeTag("[=WHEN]"))
+//
+// In this case, if the `color` option is not given, the value is not
+// changed and remains at "never". If the argument is given _with no
+// argument_, the value is changed to "auto", the first value in the
+// default slice, and if the argument is given _with_ an argument, the
+// value changes to that argument _provided that_ it is in the default
+// slice. If `--color=foo` were given, it would result in an error.
+//
 package fflag
 
 import (
+	"bufio"
 	"bytes"
 	"log"
+	"os"
 	"strings"
 	"unicode"
 
@@ -479,6 +513,34 @@ func (f *Flag) Set(value interface{}, argPos int) error {
 			f.Failf("failed to set counter '%s' from %d", f.String(), f.Count)
 		}
 		return err
+	}
+
+	if f.IsFileReader() {
+		filename, ok := value.(string)
+		if !ok {
+			f.Failf("file-reader flag %s expects a filename (string) argument", f)
+			return &FlagError{"argument to flag-reader not a string"}
+		}
+		file, err := os.Open(filename)
+		if err != nil {
+			f.Failf("failed to open file '%s' for flag '%s': %v", filename, f, err)
+			return err
+		}
+		defer file.Close()
+		scanner := bufio.NewScanner(file)
+		for scanner.Scan() {
+			line := scanner.Text()
+			err := types.FromStr(f.Value, line)
+			if err != nil {
+				f.Failf("failed to convert '%s' to %T: %v", line, f.Value, err)
+				return err
+			}
+			if err = scanner.Err(); err != nil {
+				f.Failf("error scanning '%s': %v", filename, err)
+				return err
+			}
+		}
+		return nil
 	}
 
 	if f.Count > 1 && !f.IsRepeatable() {
@@ -990,6 +1052,9 @@ func (f *Flag) IsCounter() bool {
 }
 func (f *Flag) IsRepeatable() bool {
 	return f.Type.TstRepeatsBit()
+}
+func (f *Flag) IsFileReader() bool {
+	return f.Type.TstFileBit()
 }
 func (f *Flag) IgnoreRepeats() bool {
 	return f.Type.TstIgnoreRepeatsBit()
