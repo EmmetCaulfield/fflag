@@ -47,17 +47,24 @@ func NewFlagGroup(title string) *FlagGroup {
 }
 
 type FlagSet struct {
-	Groups            []*FlagGroup
-	GroupIndex        int
-	LabelDict         map[string]*Flag
-	LetterDict        map[rune]*Flag
-	Output            io.Writer
-	IgnoreDoubleDash  bool
-	InputArgs        *deque.Deque[string]
-	OutputArgs       *deque.Deque[string]
-	OnFail            FailOption
-	FailExitCode      int
+	Groups             []*FlagGroup
+	GroupIndex         int
+	LongDict          map[string]*Flag
+	ShortDict         map[rune]*Flag
+	Output             io.Writer
+	IgnoreDoubleDash   bool
+	HasHyphenNumIdiom  bool
+	InputArgs         *deque.Deque[string]
+	OutputArgs        *deque.Deque[string]
+	OnFail             FailOption
+	FailExitCode       int
+	OnFileError        FailOption
+	FileErrExitCode    int
 }
+
+var DefaultFailExitCode int = 2
+var DefaultFileErrExitCode int = 2
+
 
 func (fs *FlagSet) NewFlagGroup(title string) *FlagGroup {
 	fg := NewFlagGroup(title)
@@ -71,6 +78,10 @@ func (fs *FlagSet) Group() *FlagGroup {
 	return fs.Groups[fs.GroupIndex]
 }
 
+func Group(title string) {
+	_ = CommandLine.NewFlagGroup(title)
+}
+
 type FlagSetOption = func (fs *FlagSet)
 
 func NewFlagSet(opts ...FlagSetOption) *FlagSet {
@@ -79,14 +90,16 @@ func NewFlagSet(opts ...FlagSetOption) *FlagSet {
 			NewFlagGroup("Options"),
 		},
 		GroupIndex:       0,
-		LabelDict:        map[string]*Flag{},
-		LetterDict:       map[rune]*Flag{},
+		LongDict:        map[string]*Flag{},
+		ShortDict:       map[rune]*Flag{},
 		Output:           os.Stderr,
 		IgnoreDoubleDash: false,
 		InputArgs:        &deque.Deque[string]{},
 		OutputArgs:       &deque.Deque[string]{},
 		OnFail:           FailDefault,
-		FailExitCode:     2,
+		FailExitCode:     DefaultFailExitCode,
+		OnFileError:      FailDefault,
+		FileErrExitCode:  DefaultFileErrExitCode,
 	}
 	for _, opt := range opts {
 		opt(fs)
@@ -140,124 +153,122 @@ func (fs *FlagSet) HasFlags() bool {
 	return n > 0
 }
 
-func (fs *FlagSet) LookupLabel(label string) *Flag {
-	if len(label) == 0 {
+func (fs *FlagSet) LookupLong(long string) *Flag {
+	if len(long) == 0 {
+		if fs.HasHyphenNumIdiom {
+			return fs.LongDict[""]
+		}
 		return nil
 	}
-	if len(label) == 1 {
-		return fs.LookupShortcut(rune(label[0]))
+	if len(long) == 1 {
+		return fs.LookupShort(rune(long[0]))
 	}
-	if f, ok := fs.LabelDict[label]; ok {
+	if f, ok := fs.LongDict[long]; ok {
 		return f
 	}
 	return nil
 }
 
-// LookupShortcut returns the Flag structure of the shortcut flag,
+// LookupShort returns the Flag structure of the shortcut flag,
 // returning nil if none exists.
-func (fs *FlagSet) LookupShortcut(r rune) *Flag {
+func (fs *FlagSet) LookupShort(r rune) *Flag {
 	if r == NoShort {
+		if fs.HasHyphenNumIdiom {
+			return fs.ShortDict[NoShort]
+		}
 		return nil
 	}
-	if f, ok := fs.LetterDict[r]; ok {
+	if f, ok := fs.ShortDict[r]; ok {
 		return f
 	}
 	return nil
 }
 
 func (fs *FlagSet) Lookup(item interface{}) *Flag {
-	if label, ok := item.(string); ok {
-		return fs.LookupLabel(label)
+	if long, ok := item.(string); ok {
+		return fs.LookupLong(long)
 	}
-	if letter, ok := item.(rune); ok {
-		return fs.LookupShortcut(letter)
+	if short, ok := item.(rune); ok {
+		return fs.LookupShort(short)
 	}
 	return nil
 }
 
-func Lookup(label string) *Flag {
-	return CommandLine.Lookup(label)
+func Lookup(long string) *Flag {
+	return CommandLine.Lookup(long)
 }
 
 func (fs *FlagSet) AddFlag(f *Flag) error {
 	if f == nil {
 		return fmt.Errorf("cannot add nil flag")
 	}
-	// We must have EITHER a valid label OR a valid letter OR both
-	if !IsValidLabel(f.Label) {
-		if !IsValidShortcut(f.Letter) {
-			return fmt.Errorf("flag has neither a label nor a shortcut letter")
-		}
-		if !f.IsShortcutAlias() {
-			return fmt.Errorf("a label is required except for shortcut aliases")
-		}
-		f.Label = ""
+	// We must have
+	//   * a valid long and no short; OR
+	//   * a valid short and an empty long; OR
+	//   * a valid long AND a valid short; OR
+	//   * an empty long AND no short (for -NUM special case)
+	if (!IsValidLong(f.Long) && f.Long != "") || (!IsValidShort(f.Short) && f.Short != NoShort) {
+		return fmt.Errorf("flag has neither a long nor a shortcut short")
 	}
-	if f.Letter != NoShort && !IsValidShortcut(f.Letter) {
-		if !f.IsLabelAlias() {
-			return fmt.Errorf("shortcut '%c' for '%s' is invalid", f.Letter, f.Label)
+	fs.Infof("Adding: %s", f)
+	if len(f.Long) > 0 {
+		if g, ok := fs.LongDict[f.Long]; ok {
+			return fmt.Errorf("shortcut '%c' already used for '%s'", f.Short, g.Long)
 		}
-		f.Letter = NoShort
+		fs.LongDict[f.Long] = f
 	}
-	fs.Infof("Adding: %s, %c", f.Label, f.Letter)
-	if len(f.Label) > 0 {
-		if g, ok := fs.LabelDict[f.Label]; ok {
-			return fmt.Errorf("shortcut '%c' already used for '%s'", f.Letter, g.Label)		
+	if f.Short != rune(0) {
+		if g, ok := fs.ShortDict[f.Short]; ok {
+			return fmt.Errorf("shortcut '%c' already used for '%s'", f.Short, g.Long)
 		}
-		fs.LabelDict[f.Label] = f
-	}
-	if f.Letter != rune(0) {
-		if g, ok := fs.LetterDict[f.Letter]; ok {
-			return fmt.Errorf("shortcut '%c' already used for '%s'", f.Letter, g.Label)		
-		}
-		fs.LetterDict[f.Letter] = f
+		fs.ShortDict[f.Short] = f
 	}
 
 	fs.Group().FlagList = append(fs.Group().FlagList, f)
 	return nil
 }
 
-func (fs *FlagSet) Var(value interface{}, letter rune, label string, usage string, opts ...FlagOption) {
+func (fs *FlagSet) Var(value interface{}, short rune, long string, usage string, opts ...FlagOption) {
 	// We need to set the parent flagset early because some of the
 	// functions downstream of NewFlag() check that the flag doesn't
 	// already exist in the parent flagset
 	options := append([]FlagOption{WithParent(fs)}, opts...)
-	f := NewFlag(value, letter, label, usage, options...)
+	f := NewFlag(value, short, long, usage, options...)
 	if f == nil {
-		fs.Failf("Failed to create new flag %s", label)
+		fs.Failf("Failed to create new flag %s", long)
 	}
 	err := fs.AddFlag(f)
 	if err != nil {
-		fs.Failf("Failed to add new flag %s, %#v: %v", label, f, err)
+		fs.Failf("Failed to add new flag %s, %#v: %v", long, f, err)
 	}
 }
 
-func Var(value interface{}, letter rune, label string, usage string, opts ...FlagOption) {
-	CommandLine.Var(value, letter, label, usage, opts...)
+func Var(value interface{}, short rune, long string, usage string, opts ...FlagOption) {
+	CommandLine.Var(value, short, long, usage, opts...)
 }
 
-func (fs *FlagSet) Equ(letter rune, label string, equiv string, value string) {
+func (fs *FlagSet) Equ(short rune, long string, equiv string, value string) {
 	var f *Flag = nil
-	f = fs.LookupLabel(equiv)
+	f = fs.LookupLong(equiv)
 	if f == nil {
 		panic("flag not found in equivalent lookup")
 	}
-	a := f.NewAlias(letter, label, WithValue(value))
+	a := f.NewAlias(short, long, WithValue(value))
 	err := fs.AddFlag(a)
 	if err != nil {
 		f.Failf("Error adding alias: %v", err)
 	}
 }
 
-func Equ(letter rune, label string, equiv string, value string) {
-	CommandLine.Equ(letter, label, equiv, value)
+func Equ(short rune, long string, equiv string, value string) {
+	CommandLine.Equ(short, long, equiv, value)
 }
 
 func (fs *FlagSet) Dump() {
 	fmt.Fprintf(fs.Output, "Groups: %+v\n", fs.Groups)
 	fmt.Fprintf(fs.Output, "GroupIndex: %+v\n", fs.GroupIndex)
-	fmt.Fprintf(fs.Output, "LabelDict: %+v\n", fs.LabelDict)
-	fmt.Fprintf(fs.Output, "LetterDict: %+v\n", fs.LetterDict)
+	fmt.Fprintf(fs.Output, "LongDict: %+v\n", fs.LongDict)
+	fmt.Fprintf(fs.Output, "ShortDict: %+v\n", fs.ShortDict)
 	fmt.Fprintf(fs.Output, "Output: %+v\n", fs.Output)
 	fmt.Fprintf(fs.Output, "IgnoreDoubleDash: %+v\n", fs.IgnoreDoubleDash)
 	fmt.Fprintf(fs.Output, "InputArgs: %+v\n", fs.InputArgs)
@@ -289,11 +300,15 @@ func (fs *FlagSet) Failf(format string, args ...interface{}) {
 }
 
 func (fs *FlagSet) Infof(format string, args ...interface{}) {
-	fmt.Fprintf(fs.Output, "INFO: " + format + "\n", args...)
+	if !fs.OnFail.TstSilentBit() {
+		fmt.Fprintf(fs.Output, "INFO: " + format + "\n", args...)
+	}
 }
 
 func (fs *FlagSet) Warnf(format string, args ...interface{}) {
-	fmt.Fprintf(fs.Output, "WARNING: " + format + "\n", args...)
+	if !fs.OnFail.TstSilentBit() {
+		fmt.Fprintf(fs.Output, "WARNING: " + format + "\n", args...)
+	}
 }
 
 

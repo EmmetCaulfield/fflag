@@ -10,46 +10,6 @@ import (
 	"strings"
 )
 
-// ErrorHandling defines how to handle flag parsing errors.
-type ErrorHandling int
-
-const (
-	// ContinueOnError will return an err from Parse() if an error is found
-	ContinueOnError ErrorHandling = iota
-	// ExitOnError will call os.Exit(2) if an error is found when parsing
-	ExitOnError
-	// PanicOnError will panic() if an error is found when parsing flags
-	PanicOnError
-)
-
-// ParseErrorsWhitelist defines the parsing errors that can be ignored
-type ParseErrorsWhitelist struct {
-	// UnknownFlags will ignore unknown flags errors and continue parsing rest of the flags
-	UnknownFlags bool
-}
-
-//--unknown (args will be empty)
-//--unknown --next-flag ... (args will be --next-flag ...)
-//--unknown arg ... (args will be arg ...)
-func stripUnknownFlagValue(args []string) []string {
-	if len(args) == 0 {
-		//--unknown
-		return args
-	}
-
-	first := args[0]
-	if len(first) > 0 && first[0] == '-' {
-		//--unknown --next-flag ...
-		return args
-	}
-
-	//--unknown arg ... (args will be arg ...)
-	if len(args) > 1 {
-		return args[1:]
-	}
-	return nil
-}
-
 // A flag argument can be:
 //
 //   * Prohibited

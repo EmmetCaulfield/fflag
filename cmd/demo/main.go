@@ -6,6 +6,7 @@ import (
 	"strings"
 
 	"github.com/EmmetCaulfield/fflag"
+	"github.com/EmmetCaulfield/fflag/pkg/types"
 )
 
 func main() {
@@ -13,6 +14,7 @@ func main() {
 	var help, nocase bool
 	var foo string
 	bar := []int{}
+	fflag.PosixRejectQuest = false
 	fflag.Var(&help, '?', "help", "print a help message")
 	fflag.Var(&nocase, 'i', "ignore-case", "ignore case in patterns",
 		fflag.WithAlias('y', "", true), fflag.NotImplemented())
@@ -23,5 +25,10 @@ func main() {
 	fflag.Parse()
 	fmt.Println()
 	fflag.CommandLine.DumpFlags()
+
+	var ix interface{}
+	ix, err := types.CoerceScalar(uint8(0), 500)
+	fmt.Printf("\n%v<%T> - %v\n", ix, ix, err)
+
 	return
 }

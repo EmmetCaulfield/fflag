@@ -12,8 +12,8 @@
 //
 // The other significant difference is the order of the short flag and
 // long flag in the `Var()` argument list, with the short flag coming
-// first as a `rune`, which must be a single UTF-8 letter, most often
-// a single ASCII letter or number. The reason for this is that short
+// first as a `rune`, which must be a single UTF-8 short, most often
+// a single ASCII short or number. The reason for this is that short
 // flags are always listed first in manpages and other documentation,
 // so it's actually a bit weird of `pflag` to have reversed this
 // de-facto standard order and, in practice, I've found it handier to
@@ -43,7 +43,7 @@
 // default `FlagSet` (called `CommandLine` after `pflag`'s equivalent)
 // with `Var()`. The minimal call to `Var()` provides: a pointer to a
 // variable where the value of the flag is to be stored; the
-// single-letter version of the flag as a rune (or 0 if none), e.g.,
+// single-short version of the flag as a rune (or 0 if none), e.g.,
 // 'h'; the long version of the flag (or "" if none), e.g. `--help`;
 // and a very brief description of the flag's purpose. For example:
 //
@@ -67,7 +67,7 @@
 //
 //    fflag.Var(&value, 0, "help", "prints a help message to stdout")
 //
-// Punctuation (or other non-letter, non-number) characters are not
+// Punctuation (or other non-short, non-number) characters are not
 // normally allowed as shortcuts. The sole exception is '?' due to its
 // widespread use as an alias for "help", but this is prohibited by
 // POSIX, so if you want to use this, you have to enable it
@@ -227,8 +227,7 @@ package fflag
 
 import (
 	"bytes"
-	"fmt"
-	"os"
+	"log"
 	"strings"
 	"unicode"
 
@@ -236,8 +235,24 @@ import (
 )
 
 var DefaultListSeparator string = ","
+
+// POSIX uses '?' for a special purpose in `getopt()`, making it
+// unsuitable for use as an option, but some applications use it
+// explicitly, often for help, so we allow it, but reject it by
+// default.
 var PosixRejectQuest bool = true
+
+// POSIX reserves `-W` for vendor options
 var PosixRejectW bool = true
+
+// The equals separator, if present, is regarded as part of the
+// option-argument under POSIX rules
+var PosixEquals bool = true
+
+// A double-hyphen terminates option processing only when it is not an
+// option-argument. When set to false, the GNU convention of ALWAYS
+// terminating option processing is followed.
+var PosixDoubleHyphen bool = true
 
 type FlagError struct {
 	s string
@@ -247,14 +262,14 @@ func (fe *FlagError) Error() string {
 	return fe.s
 }
 
-type CallbackFunction func(value interface{}, letter rune, label string, arg string, pos int) error
+type CallbackFunction func(value interface{}, short rune, long string, arg string, pos int) error
 
 type FlagType uint16
 
 const (
 	ClearFlagType     FlagType = 0b0000000000000000
-	LabelAliasBit     FlagType = 0b0000000000000001
-	LetterAliasBit    FlagType = 0b0000000000000010
+	LongAliasBit      FlagType = 0b0000000000000001
+	ShortAliasBit     FlagType = 0b0000000000000010
 	ObsoleteBit       FlagType = 0b0000000000000100
 	NotImplementedBit FlagType = 0b0000000000001000
 	HiddenBit         FlagType = 0b0000000000010000
@@ -262,10 +277,11 @@ const (
 	CounterBit        FlagType = 0b0000000001000000
 	RepeatsBit        FlagType = 0b0000000010000000
 	IgnoreRepeatsBit  FlagType = 0b0000000100000000
+	FileBit           FlagType = 0b0000001000000000
 )
 
-func (ft *FlagType) TstLabelAliasBit() bool     { return *ft&LabelAliasBit != 0 }
-func (ft *FlagType) TstLetterAliasBit() bool    { return *ft&LetterAliasBit != 0 }
+func (ft *FlagType) TstLongAliasBit() bool      { return *ft&LongAliasBit != 0 }
+func (ft *FlagType) TstShortAliasBit() bool     { return *ft&ShortAliasBit != 0 }
 func (ft *FlagType) TstObsoleteBit() bool       { return *ft&ObsoleteBit != 0 }
 func (ft *FlagType) TstNotImplementedBit() bool { return *ft&NotImplementedBit != 0 }
 func (ft *FlagType) TstHiddenBit() bool         { return *ft&HiddenBit != 0 }
@@ -273,10 +289,11 @@ func (ft *FlagType) TstChangedBit() bool        { return *ft&ChangedBit != 0 }
 func (ft *FlagType) TstCounterBit() bool        { return *ft&CounterBit != 0 }
 func (ft *FlagType) TstRepeatsBit() bool        { return *ft&RepeatsBit != 0 }
 func (ft *FlagType) TstIgnoreRepeatsBit() bool  { return *ft&IgnoreRepeatsBit != 0 }
-func (ft *FlagType) TstAliasBits() bool         { return (*ft&LetterAliasBit)|(*ft&LabelAliasBit) != 0 }
+func (ft *FlagType) TstFileBit() bool           { return *ft&FileBit != 0 }
+func (ft *FlagType) TstAliasBits() bool         { return (*ft&ShortAliasBit)|(*ft&LongAliasBit) != 0 }
 
-func (ft *FlagType) ClrLabelAliasBit()     { *ft = *ft & ^LabelAliasBit }
-func (ft *FlagType) ClrLetterAliasBit()    { *ft = *ft & ^LetterAliasBit }
+func (ft *FlagType) ClrLongAliasBit()      { *ft = *ft & ^LongAliasBit }
+func (ft *FlagType) ClrShortAliasBit()     { *ft = *ft & ^ShortAliasBit }
 func (ft *FlagType) ClrObsoleteBit()       { *ft = *ft & ^ObsoleteBit }
 func (ft *FlagType) ClrNotImplementedBit() { *ft = *ft & ^NotImplementedBit }
 func (ft *FlagType) ClrHiddenBit()         { *ft = *ft & ^HiddenBit }
@@ -284,9 +301,10 @@ func (ft *FlagType) ClrChangedBit()        { *ft = *ft & ^ChangedBit }
 func (ft *FlagType) ClrCounterBit()        { *ft = *ft & ^CounterBit }
 func (ft *FlagType) ClrRepeatsBit()        { *ft = *ft & ^RepeatsBit }
 func (ft *FlagType) ClrIgnoreRepeatsBit()  { *ft = *ft & ^IgnoreRepeatsBit }
+func (ft *FlagType) ClrFileBit()           { *ft = *ft & ^FileBit }
 
-func (ft *FlagType) SetLabelAliasBit()     { *ft = *ft | LabelAliasBit }
-func (ft *FlagType) SetLetterAliasBit()    { *ft = *ft | LetterAliasBit }
+func (ft *FlagType) SetLongAliasBit()      { *ft = *ft | LongAliasBit }
+func (ft *FlagType) SetShortAliasBit()     { *ft = *ft | ShortAliasBit }
 func (ft *FlagType) SetObsoleteBit()       { *ft = *ft | ObsoleteBit }
 func (ft *FlagType) SetNotImplementedBit() { *ft = *ft | NotImplementedBit }
 func (ft *FlagType) SetHiddenBit()         { *ft = *ft | HiddenBit }
@@ -294,17 +312,17 @@ func (ft *FlagType) SetChangedBit()        { *ft = *ft | ChangedBit }
 func (ft *FlagType) SetCounterBit()        { *ft = *ft | CounterBit }
 func (ft *FlagType) SetRepeatsBit()        { *ft = *ft | RepeatsBit }
 func (ft *FlagType) SetIgnoreRepeatsBit()  { *ft = *ft | IgnoreRepeatsBit }
+func (ft *FlagType) SetFileBit()           { *ft = *ft | FileBit }
 
 type Flag struct {
 	Value         interface{}
-	Label         string
-	Letter        rune
+	Long          string
+	Short         rune
 	Type          FlagType
 	Count         int
 	ValueTypeTag  string
 	Default       interface{}
 	AliasFor      *Flag
-	FileFlag      *Flag
 	Usage         string
 	Callback      CallbackFunction
 	ListSeparator string
@@ -317,20 +335,66 @@ const IdSep string = "/"
 // as a placeholder meaning "there is no short option" in a variety of
 // contexts.
 const NoShort rune = rune(0)
+const NoLong string = ""
 
-func ID(letter rune, label string) string {
-	// We use this for the -NUM special case used by a few utilities
-	// (e.g. head, tail), which has NEITHER a normal valid shortcut
-	// nor a normal valid long flag
-	if letter == NoShort && len(label) == 0 {
-		return string(NoShort) + IdSep
+// Only allow letters, numbers, and the question-mark as shortcut
+// letters
+func IsValidShort(r rune) bool {
+	if PosixRejectQuest && r == '?' {
+		log.Panicf("cannot use '-?' as a short option if `fflag.PosixRejectQuest` is `true`")
 	}
-	// Otherwise, we require either the shortcut or the long flag to
-	// be valid
-	if IsValidShortcut(letter) || IsValidLabel(label) {
-		return string(letter) + IdSep + label
+	if PosixRejectW && r == 'W' {
+		log.Panicf("cannot use '-W' as a short option if `fflag.PosixRejectW` is `true`")
 	}
-	// An empty ID string is always an error
+	return r == '?' || unicode.IsLetter(r) || unicode.IsNumber(r)
+}
+
+// Only allow letters, numbers, and hyphens in labels
+func IsValidLong(s string) bool {
+	// A long must be longer than one byte:
+	if len(s) < 2 {
+		return false
+	}
+	// A long can't begin with a hyphen
+	if s[0] == '-' {
+		return false
+	}
+	// Longs must otherwise consist entirely of letters, numbers, and
+	// hyphens
+	for _, r := range s {
+		if r == '-' || unicode.IsLetter(r) || unicode.IsNumber(r) {
+			continue
+		}
+		return false
+	}
+	return true
+}
+
+func IsValidPair(short rune, long string) bool {
+	if short == NoShort && long == NoLong {
+		// We use this for the -NUM special case used by a few utilities
+		// (e.g. head, tail), which has NEITHER a normal valid shortcut
+		// nor a normal valid long flag
+		return true
+	}
+	goodShort := IsValidShort(short)
+	if long == NoLong && goodShort {
+		return true
+	}
+	goodLong := IsValidLong(long)
+	if short == NoShort && goodLong {
+		return true
+	}
+	if goodShort && goodLong {
+		return true
+	}
+	return false
+}
+
+func ID(short rune, long string) string {
+	if IsValidPair(short, long) {
+		return string(short) + IdSep + long
+	}
 	return ""
 }
 
@@ -354,17 +418,16 @@ func UnID(id string) (rune, string) {
 	if len(parts) != 2 {
 		return ErrRuneIdSepBad, ""
 	}
-	if parts[1] == "" && emptyOrNoShort(parts[0]) {
-		return NoShort, ""
+	if parts[1] == NoLong && emptyOrNoShort(parts[0]) {
+		return NoShort, NoLong
 	}
 
-	letter, tail := FirstRune(parts[0])
-	if letter < 0 || tail != "" {
-		return ErrRuneShortBad, ""
+	short, tail := FirstRune(parts[0])
+	if short < 0 || tail != "" {
+		return ErrRuneShortBad, NoLong
 	}
-
-	if IsValidShortcut(letter) || IsValidLabel(parts[1]) {
-		return letter, parts[1]
+	if IsValidPair(short, parts[1]) {
+		return short, parts[1]
 	}
 	return ErrRuneIdPartsBad, ""
 }
@@ -383,7 +446,7 @@ func (f *Flag) Set(value interface{}, argPos int) error {
 			f.Count++
 			return setter.Set(str)
 		}
-		f.Failf("Cannot pass non-string to SetValue.Set(string) in flag.Set() for flag '%s'", f.Label)
+		f.Failf("Cannot pass non-string to SetValue.Set(string) in flag.Set() for flag '%s'", f.Long)
 		return &FlagError{"failed to pass non-string to SetValue.Set()"}
 	}
 
@@ -391,12 +454,12 @@ func (f *Flag) Set(value interface{}, argPos int) error {
 		f = f.AliasFor
 	}
 	if f.AliasFor != nil {
-		panic("Double aliases are not permitted")
+		log.Panic("double alias in Flag.Set(...)")
 	}
 
 	if f.HasCallback() {
 		v, _ := value.(string)
-		return f.Callback(f.Value, f.Letter, f.Label, v, argPos)
+		return f.Callback(f.Value, f.Short, f.Long, v, argPos)
 	}
 
 	f.Count++
@@ -494,14 +557,14 @@ func (f *Flag) GetDefault() interface{} {
 		f = f.AliasFor
 	}
 	if f.AliasFor != nil {
-		panic("double aliases are not allowed")
+		log.Panic("double alias in Flag.GetDefault()")
 	}
 	if types.IsSlice(f.Default) {
 		if types.SliceLen(f.Default) > 0 {
 			return types.ItemAt(f.Default, 0)
 		}
-		// Default is an empty slice. Odd.
-		panic("default cannot be an empty slice")
+		// Default is an empty slice, which should be impossible here
+		log.Panic("f.Default is an empty slice in Flag.GetDefault()")
 	}
 	return f.Default
 }
@@ -513,7 +576,7 @@ func (f *Flag) InDefaults(ix interface{}) bool {
 		f = f.AliasFor
 	}
 	if f.AliasFor != nil {
-		panic("double aliases are not allowed")
+		log.Panic("double alias in Flag.InDefaults()")
 	}
 	if !types.IsSlice(f.Default) {
 		return true
@@ -585,14 +648,14 @@ func (f *Flag) GetTypeTag() string {
 // version, e.g. "-x, --example", otherwise just the version that's
 // defined, e.g. "-x" or "--example"
 func (f *Flag) String() string {
-	if f.Letter != NoShort && len(f.Label) > 1 {
-		return "-" + string(f.Letter) + ", --" + f.Label
+	if f.Short != NoShort && len(f.Long) > 1 {
+		return "-" + string(f.Short) + ", --" + f.Long
 	}
-	if len(f.Label) > 1 {
-		return "--" + f.Label
+	if len(f.Long) > 1 {
+		return "--" + f.Long
 	}
-	if f.Letter != NoShort {
-		return "-" + string(f.Letter)
+	if f.Short != NoShort {
+		return "-" + string(f.Short)
 	}
 	return ""
 }
@@ -600,7 +663,7 @@ func (f *Flag) String() string {
 // Returns f.String() wrapped in extra stuff for help/usage output
 func (f *Flag) FlagString() string {
 	buf := &bytes.Buffer{}
-	if f.Letter == NoShort {
+	if f.Short == NoShort {
 		buf.WriteString(`    `)
 	}
 	buf.WriteString(f.String())
@@ -639,12 +702,12 @@ func (f *Flag) DescString() string {
 // `-c, --cat`. Case is ignored in the sort, but uppercase shorts are
 // presented before lowercase shorts.
 func (f *Flag) SortKey() string {
-	if f.Letter == NoShort {
-		return f.Label
+	if f.Short == NoShort {
+		return f.Long
 	}
 	// TODO(emmet): think about special case of no long and no short
 	// used for -NUM
-	return string(f.Letter) + f.Label
+	return string(f.Short) + f.Long
 }
 
 type FlagOption = func(f *Flag)
@@ -654,7 +717,7 @@ type AliasOption = func(f *Flag)
 func WithParent(fs *FlagSet) FlagOption {
 	return func(f *Flag) {
 		if f.parentFlagSet != nil && f.parentFlagSet != fs {
-			panic("parent flagset already set")
+			log.Panicf("attempt to change parent flagset in fflag.WithParent() for %s", f)
 		}
 		f.parentFlagSet = fs
 	}
@@ -669,29 +732,26 @@ func WithValue(value string) AliasOption {
 func WithListSeparator(sep rune) FlagOption {
 	return func(f *Flag) {
 		if !types.IsSlice(f.Value) {
-			panic("cannot set separator for non-list value")
+			log.Panicf("cannot set separator for non-list value %s", f)
 		}
 		f.ListSeparator = string(sep)
 	}
 }
 
-func WithAlias(letter rune, label string, obsolete bool) FlagOption {
+func WithAlias(short rune, long string, obsolete bool) FlagOption {
 	return func(f *Flag) {
 		var flag *Flag = nil
-		flag = f.ParentFlagSet().LookupLabel(label)
+		flag = f.ParentFlagSet().LookupLong(long)
 		if flag != nil {
-			f.Failf("long flag already exists for alias '%s'", label)
-			panic("alias cannot be created")
+			log.Panicf("long flag '%s' already exists for alias '%s'", flag, long)
 		}
-		flag = f.ParentFlagSet().LookupShortcut(letter)
+		flag = f.ParentFlagSet().LookupShort(short)
 		if flag != nil {
-			f.Failf("short flag already exists for alias '%c'", letter)
-			panic("alias cannot be created")
+			log.Panicf("short flag '%s' already exists for alias '%c'", flag, short)
 		}
-		flag = f.NewAlias(letter, label)
+		flag = f.NewAlias(short, long)
 		if flag == nil {
-			f.Failf("error creating alias -%c/--%s for `%s`", letter, label, f)
-			panic("alias cannot be created")
+			log.Panicf("error creating alias -%c/--%s for `%s`", short, long, f)
 		}
 		if obsolete {
 			flag.Type.SetObsoleteBit()
@@ -717,11 +777,10 @@ func WithDefault(def interface{}) FlagOption {
 				// We shouldn't be here if f.Value implements the
 				// SetValue interface, because that always takes a
 				// string so the default should be a string.
-				panic("non-string default for object implementing SetValue interface")
+				log.Panicf("non-string default for '%s' where value implements SetValue interface", f)
 			}
 			if !types.SameBaseType(valType, defType) {
-				fmt.Fprintf(os.Stderr, "%016b != %016b for '%#v'", valType, defType, f)
-				panic("non-string default has different base type")
+				log.Panicf("type mismatch: default type <%T> for value type <%T> in '%s'", def, f.Value, f)
 			}
 		}
 		// Set the default value
@@ -729,7 +788,7 @@ func WithDefault(def interface{}) FlagOption {
 		def = f.GetDefault()
 		err := types.FromStr(f.Value, types.StrConv(def))
 		if err != nil {
-			panic("failed to set default")
+			log.Panicf("failed to set value to default (%v) for '%s'", f.Default, f)
 		}
 	}
 }
@@ -808,42 +867,62 @@ func WithTypeTag(tag string) FlagOption {
 func WithCallback(callback CallbackFunction) FlagOption {
 	return func(f *Flag) {
 		if f.IsCounter() {
-			panic("callback supplied for counter")
+			log.Panicf("callback supplied for counter '%s'", f)
 		}
 		f.Callback = callback
 	}
 }
 
-func NewFlag(value interface{}, letter rune, label string, usage string, opts ...FlagOption) *Flag {
+// A file-reading flag can't be a counter, have a callback, or be an
+// alias:
+func ReadFile() FlagOption {
+	return func(f *Flag) {
+		if f.IsCounter() {
+			log.Panicf("counter flag '%s' cannot be a file reader", f)
+		}
+		if f.HasCallback() {
+			log.Panicf("flag '%s' with callback cannot be a file reader", f)
+		}
+		if f.IsAlias() {
+			log.Panicf("alias flag '%s' cannot be a file reader", f)
+		}
+		if !types.IsSlice(f.Value) {
+			log.Panicf("value of file reader flag '%s' must point at a slice", f)
+		}
+		f.Type.SetFileBit()
+	}
+}
+
+func NewFlag(value interface{}, short rune, long string, usage string, opts ...FlagOption) *Flag {
+	// We potentially use the type identifier several times
+	typeId := types.Type(value)
+
 	// Require pointers as storage targets:
-	if !types.IsPointer(value) {
+	if !typeId.TstPointerBit() {
 		return nil
 	}
 	// Don't allow non-empty slices as storage targets:
-	if types.IsSlice(value) && types.SliceLen(value) != 0 {
+	if typeId.TstSliceBit() && types.SliceLen(value) != 0 {
 		return nil
 	}
-	// Require `PosixRejectQuest` to be set to `false` before we
-	// accept `-?` (prohibited) as a short option
-	if PosixRejectQuest && letter == '?' {
-		panic("POSIX disallows '-?' as a single-letter option")
+	// We don't know what to do with things that are neither basic
+	// types nor implement the SetValue interface:
+	if typeId.TstOtherBit() {
+		log.Panicf("value type <%T> is not supported", value)
 	}
-	// Require `PosixRejectW` to be set to `false` before we accept
-	// `-W` (reserved) as a short option
-	if PosixRejectW && letter == 'W' {
-		panic("POSIX reserves '-W' as a single-letter option")
+	if !IsValidPair(short, long) {
+		log.Panicf("flag pair '-%c/--%s' is not valid or not permitted", short, long)
 	}
-
-	if !(IsValidLabel(label) || IsValidShortcut(letter)) {
-		return nil
-	}
-	if types.IsOtherT(value) {
-		return nil
+	if short == NoShort && long == NoLong {
+		// Special -NUM idiom
+		if typeId.TstSliceBit() || !typeId.TstUintBit() {
+			log.Panicf("a scalar unsigned integer is required for the -NUM idiom")
+		}
 	}
 	f := &Flag{
 		Value:         value,
-		Label:         label,
-		Letter:        letter,
+		Long:          long,
+		Short:         short,
 		Usage:         usage,
 		Count:         0,
 		ListSeparator: DefaultListSeparator,
@@ -857,18 +936,18 @@ func NewFlag(value interface{}, letter rune, label string, usage string, opts ..
 	return f
 }
 
-func (f *Flag) NewAlias(letter rune, label string, opts ...FlagOption) *Flag {
+func (f *Flag) NewAlias(short rune, long string, opts ...FlagOption) *Flag {
 	// alias has same type as target except that the appropriate alias
 	// bits are set
 	flagType := f.Type
-	if IsValidLabel(label) {
-		flagType.SetLabelAliasBit()
+	if !IsValidPair(short, long) {
+		log.Panicf("short/long pair -%c/--%s not valid in NewAlias()", short, long)
 	}
-	if letter == 0 {
-		letter = NoShort
+	if short == 0 {
+		short = NoShort
 	}
-	if letter == NoShort || IsValidShortcut(letter) {
-		flagType.SetLetterAliasBit()
+	if short == NoShort || IsValidShort(short) {
+		flagType.SetShortAliasBit()
 	}
 	if !flagType.TstAliasBits() {
 		return nil
@@ -876,8 +955,8 @@ func (f *Flag) NewAlias(letter rune, label string, opts ...FlagOption) *Flag {
 
 	a := &Flag{
 		Value:         nil, // stored in `AliasFor` target
-		Label:         label,
-		Letter:        letter,
+		Long:          long,
+		Short:         short,
 		AliasFor:      f,
 		Type:          flagType,
 		Count:         -1, // count in `AliasFor` target
@@ -891,11 +970,11 @@ func (f *Flag) NewAlias(letter rune, label string, opts ...FlagOption) *Flag {
 	return a
 }
 
-func (f *Flag) IsLabelAlias() bool {
-	return f.Type.TstLabelAliasBit()
+func (f *Flag) IsLongAlias() bool {
+	return f.Type.TstLongAliasBit()
 }
-func (f *Flag) IsShortcutAlias() bool {
-	return f.Type.TstLetterAliasBit()
+func (f *Flag) IsShortAlias() bool {
+	return f.Type.TstShortAliasBit()
 }
 func (f *Flag) IsAlias() bool {
 	return f.Type.TstAliasBits()
@@ -923,39 +1002,6 @@ func (f *Flag) IsNumber() bool {
 }
 func (f *Flag) HasCallback() bool {
 	return f.Callback != nil
-}
-
-// Only allow letters, numbers, and the question-mark as shortcut
-// letters
-func IsValidShortcut(r rune) bool {
-	if PosixRejectQuest && r == '?' {
-		return false
-	}
-	if PosixRejectW && r == 'W' {
-		return false
-	}
-	return r == '?' || unicode.IsLetter(r) || unicode.IsNumber(r)
-}
-
-// Only allow letters, numbers, and underscore in labels
-func IsValidLabel(label string) bool {
-	// A label must be longer than one byte:
-	if len(label) < 2 {
-		return false
-	}
-	// A label can't begin with a hyphen
-	if label[0] == '-' {
-		return false
-	}
-	// Labels must otherwise consist entirely of letters, numbers, and
-	// hyphens
-	for _, r := range label {
-		if r == '-' || unicode.IsLetter(r) || unicode.IsNumber(r) {
-			continue
-		}
-		return false
-	}
-	return true
 }
 
 func (f *Flag) Failf(format string, args ...interface{}) {

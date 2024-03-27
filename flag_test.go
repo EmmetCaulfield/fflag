@@ -4,6 +4,8 @@ import (
 	"fmt"
 	"reflect"
 	"testing"
+
+	"github.com/stretchr/testify/assert"
 )
 
 func setup() {
@@ -25,8 +27,8 @@ func runesToAscii(src string) string {
 
 func TestIdRoundtrip(t *testing.T) {
 	table := []struct {
-		letter rune
-		label  string
+		short  rune
+		long   string
 		id     string
 		expect bool
 	}{
@@ -37,14 +39,14 @@ func TestIdRoundtrip(t *testing.T) {
 		{ErrRuneEmptyStr, "", "", true},
 	}
 	for i, test := range table {
-		id := ID(test.letter, test.label)
+		id := ID(test.short, test.long)
 		result := (id == test.id)
 		if result != test.expect {
-			t.Errorf("test ID() roundtrip %d failed, expected '{%d}/%s', got '%s'", i, test.letter, runesToAscii(test.label), runesToAscii(id))
+			t.Errorf("test ID() roundtrip %d failed, expected '{%d}/%s', got '%s'", i, test.short, runesToAscii(test.long), runesToAscii(id))
 		}
 
 		unletter, unlabel := UnID(test.id)
-		result = (unletter == test.letter && unlabel == test.label)
+		result = (unletter == test.short && unlabel == test.long)
 		if result != test.expect {
 			t.Errorf("test UnID() roundtrip %d failed, expected '%s', got '{%d}/%s'", i, runesToAscii(test.id), unletter, unlabel)
 		}
@@ -233,4 +235,18 @@ func TestVectorSet(t *testing.T) {
 	if !reflect.DeepEqual(i8a, i8v) {
 		t.Errorf("value mismatch: expected %v, got %v", i8a, i8v)
 	}
+}
+
+func TestWithDefault(t *testing.T) {
+	b := false
+	// Default should be the same type as the value or a string
+	assert.Panics(t, func() { Var(&b, 'b', "", "should panic", WithDefault(100)) })
+	assert.Panics(t, func() { Var(&b, 'b', "", "should panic", WithDefault("foo")) })
+	Var(&b, 'b', "", "should NOT panic", WithDefault("true"))
+	assert.Equal(t, true, b)
+}
+
+func TestHyphenNumIdiom(t *testing.T) {
+	b := false
+	assert.Panics(t, func() { Var(&b, NoShort, NoLong, "should panic") })
 }
