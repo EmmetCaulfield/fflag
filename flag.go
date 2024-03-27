@@ -19,15 +19,15 @@
 // practice, I've found it handier to obey the standard order than
 // stick to the reversed `flag` argument order.
 //
-// If there is no short flag, the zero value (0, `\0', or
+// If there is no short flag, the zero value (0, `'\0'`, or
 // `fflag.NoShort`) is used. The usual rules apply to long flags,
 // which must consist of letters and numbers, except that the ASCII
 // requirement has been relaxed. Any character satisfying
-// unicode.IsLetter() or unicode.IsNumber(), or the ASCII hyphen/minus
-// character, '-', are allowed. There is _no attempt whatsoever_ at
-// (what `pflag` refers to as) normalization, a very dubious utility:
-// just use the long flag you mean to use without weird
-// capitalization.
+// `unicode.IsLetter()` or `unicode.IsNumber()`, or the ASCII
+// hyphen/minus character, '-', are allowed. There is _no attempt
+// whatsoever_ at (what `pflag` refers to as) normalization, a very
+// dubious utility: just use the long flag you mean to use without
+// weird capitalization.
 //
 // That said, `fflag` meets the onerous GNU expectation that “users
 // can abbreviate the option names as long as the abbreviations are
