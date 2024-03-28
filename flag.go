@@ -494,7 +494,18 @@ func (f *Flag) MutexCollides() *Flag {
 	return nil
 }
 
+func (f *Flag) Test(value interface{}, argPos int) error {
+	return f.testOrSet(value, argPos, false)
+}
+
 func (f *Flag) Set(value interface{}, argPos int) error {
+	return f.testOrSet(value, argPos, true)
+}
+
+// TestOrSet() sets `f.Value` to `value` if `doSet` is `true`,
+// otherwise it silently tests, insofar as possible, whether the set
+// would succeed or not.
+func (f *Flag) testOrSet(value interface{}, argPos int, doSet bool) error {
 	prev := f.MutexCollides()
 	if prev != nil {
 		f.Failf("flag '%s' collides with previously given flag '%s'", f, prev)
@@ -504,10 +515,15 @@ func (f *Flag) Set(value interface{}, argPos int) error {
 	if setter, ok := f.Value.(types.SetValue); ok {
 		if str, ok := value.(string); ok {
 			f.Count++
-			return setter.Set(str)
+			if doSet {
+				return setter.Set(str)
+			}
+			return nil
 		}
-		f.Failf("Cannot pass non-string to SetValue.Set(string) in flag.Set() for flag '%s'", f.Long)
-		return &FlagError{"failed to pass non-string to SetValue.Set()"}
+		if doSet {
+			f.Failf("Cannot pass non-string to SetValue.Set(string) in flag.Set() for flag '%s'", f)
+		}
+		return &FlagError{"cannot pass non-string to SetValue.Set()"}
 	}
 
 	if f.AliasFor != nil {
@@ -519,7 +535,10 @@ func (f *Flag) Set(value interface{}, argPos int) error {
 
 	if f.HasCallback() {
 		v, _ := value.(string)
-		return f.Callback(f.Value, f.Short, f.Long, v, argPos)
+		if doSet {
+			return f.Callback(f.Value, f.Short, f.Long, v, argPos)
+		}
+		return nil
 	}
 
 	f.Count++
@@ -534,9 +553,9 @@ func (f *Flag) Set(value interface{}, argPos int) error {
 		//     panic("non-numeric value cannot be a counter")
 		// }
 		str := types.StrConv(f.Count)
-		err := types.FromStr(f.Value, str)
-		if err != nil {
-			f.Failf("failed to set counter '%s' from %d", f.String(), f.Count)
+		err := types.FromStr(f.Value, str, doSet)
+		if err != nil && doSet {
+			f.Failf("failed to set counter '%s' from %d", f, f.Count)
 		}
 		return err
 	}
@@ -544,25 +563,33 @@ func (f *Flag) Set(value interface{}, argPos int) error {
 	if f.IsFileReader() {
 		filename, ok := value.(string)
 		if !ok {
-			f.Failf("file-reader flag %s expects a filename (string) argument", f)
+			if doSet {
+				f.Failf("file-reader flag %s expects a filename (string) argument", f)
+			}
 			return &FlagError{"argument to flag-reader not a string"}
 		}
 		file, err := os.Open(filename)
 		if err != nil {
-			f.Failf("failed to open file '%s' for flag '%s': %v", filename, f, err)
+			if doSet {
+				f.Failf("failed to open file '%s' for flag '%s': %v", filename, f, err)
+			}
 			return err
 		}
 		defer file.Close()
 		scanner := bufio.NewScanner(file)
 		for scanner.Scan() {
 			line := scanner.Text()
-			err := types.FromStr(f.Value, line)
+			err := types.FromStr(f.Value, line, doSet)
 			if err != nil {
-				f.Failf("failed to convert '%s' to %T: %v", line, f.Value, err)
+				if doSet {
+					f.Failf("failed to convert '%s' to %T: %v", line, f.Value, err)
+				}
 				return err
 			}
 			if err = scanner.Err(); err != nil {
-				f.Failf("error scanning '%s': %v", filename, err)
+				if doSet {
+					f.Failf("error scanning '%s': %v", filename, err)
+				}
 				return err
 			}
 		}
@@ -570,7 +597,9 @@ func (f *Flag) Set(value interface{}, argPos int) error {
 	}
 
 	if f.Count > 1 && !f.IsRepeatable() {
-		f.Failf("flag '%s' is not repeatable", f.String())
+		if doSet {
+			f.Failf("flag '%s' is not repeatable", f.String())
+		}
 		return &FlagError{"flag not repeatable"}
 	}
 
@@ -584,12 +613,16 @@ func (f *Flag) Set(value interface{}, argPos int) error {
 			// value (`false`) returned by the type assertion is the
 			// default we want in the absence of a stipulated default
 			def, _ := f.GetDefault().(bool)
-			*boolp = !def
+			if doSet {
+				*boolp = !def
+			}
 			return nil
 		}
 		value = f.GetDefault()
 		if value == nil {
-			f.Failf("flag.Set(nil) called for flag '%s' with no default", f)
+			if doSet {
+				f.Failf("flag.Set(nil) called for flag '%s' with no default", f)
+			}
 			return &FlagError{"cannot set nil value for non-bool with no default"}
 		}
 	} else if !f.InDefaults(value) {
@@ -598,7 +631,9 @@ func (f *Flag) Set(value interface{}, argPos int) error {
 		// in a list optarg would be checked against the list in
 		// f.Default (if any), but in reality, a non-scalar optarg
 		// (e.g. `-x foo,bar,baz`) will fail here.
-		f.Failf("value %v not found in defaults %v for '%s'", value, f.Default, f)
+		if doSet {
+			f.Failf("value %v not found in defaults %v for '%s'", value, f.Default, f)
+		}
 		return &FlagError{"value constrained by defaults"}
 	}
 
@@ -612,15 +647,19 @@ func (f *Flag) Set(value interface{}, argPos int) error {
 	if str, ok = value.(string); !ok {
 		str = types.StrConv(value, types.WithSep(f.ListSeparator))
 		if str == "" {
-			f.Failf("failed to convert '%v' to a nonempty string in '%s'", value, f)
+			if doSet {
+				f.Failf("failed to convert '%v' to a nonempty string in '%s'", value, f)
+			}
 			return &FlagError{"cannot convert value to string"}
 		}
 	}
 
 	// Set the value from the string version
-	err := types.FromStr(f.Value, str, types.WithSep(f.ListSeparator))
+	err := types.FromStr(f.Value, str, doSet, types.WithSep(f.ListSeparator))
 	if err != nil {
-		f.Failf("failed to convert '%s' to %T: %v", str, f.Value, err)
+		if doSet {
+			f.Failf("failed to convert '%s' to %T: %v", str, f.Value, err)
+		}
 		return err
 	}
 	return nil
@@ -748,31 +787,54 @@ func (f *Flag) String() string {
 	return ""
 }
 
+func (f *Flag) FormatShort() string {
+	if f.Short == NoShort {
+		if f.Long == NoLong {
+			return "-NUM"
+		}
+		return ""
+	}
+
+	tag := f.GetTypeTag()
+	if len(tag) == 0 || f.IsAlias() {
+		return "-" + string(f.Short)
+	}
+
+	if f.Type.TstDefOptionalBit() {
+		return "-" + string(f.Short) + "[" + tag + "]"
+	}
+	return "-" + string(f.Short) + " " + tag
+}
+
+func (f *Flag) FormatLong() string {
+	if f.Long == NoLong {
+		return ""
+	}
+
+	tag := f.GetTypeTag()
+	if len(tag) == 0 || f.IsAlias() {
+		return "--" + f.Long
+	}
+
+	if f.Type.TstDefOptionalBit() {
+		return "--" + f.Long + "[=" + tag + "]"
+	}
+	return "--" + f.Long + "=" + tag
+}
+
 // Returns f.String() wrapped in extra stuff for help/usage output
 func (f *Flag) FlagString() string {
-	if f.Short == NoShort && f.Long == NoLong {
-		return "-NUM"
+	short := f.FormatShort()
+	if short == "" {
+		short = "    "
 	}
-	buf := &bytes.Buffer{}
-	tag := f.GetTypeTag()
+	if f.Long == NoLong {
+		return short
+	}
 	if f.Short == NoShort {
-		buf.WriteString(`    `)
-	} else {
-		buf.WriteString("-" + string(f.Short))
-		if !f.IsAlias() && len(tag) > 0 {
-			buf.WriteString(" " + tag)
-		}
-		if f.Long != NoLong {
-			buf.WriteString(", ")
-		}
+		return short + f.FormatLong()
 	}
-	if f.Long != NoLong {
-		buf.WriteString("--" + f.Long)
-		if !f.IsAlias() && len(tag) > 0 {
-			buf.WriteString("=" + tag)
-		}
-	}
-	return buf.String()
+	return short + ", " + f.FormatLong()
 }
 
 func (f *Flag) DescString() string {
@@ -893,15 +955,14 @@ func (f *Flag) setupDefault(def interface{}, optional bool) error {
 	}
 	if optional {
 		f.Type.SetDefOptionalBit()
-		return nil
 	}
-	f.Type.ClrDefOptionalBit()
-	// Set the default value
+	// Really set the default value only if `optional` is `false`
+	// (i.e. we want `doSet` argument to FromStr() to be true)
 	f.Default = def
 	def = f.GetDefault()
-	err := types.FromStr(f.Value, types.StrConv(def))
+	err := types.FromStr(f.Value, types.StrConv(def), !optional)
 	if err != nil {
-		log.Panicf("failed to set value to default (%v) for '%s'", f.Default, f)
+		log.Panicf("failed to set/test value to default (%v) for '%s'", f.Default, f)
 	}
 	return nil
 }
