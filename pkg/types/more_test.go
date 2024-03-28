@@ -341,23 +341,39 @@ func TestSliceOps_string(t *testing.T) {
 
 func TestStrConv_bool(t *testing.T) {
     a := bool(true)
-    var b bool
+    var b, c bool
     s := StrConv(a)
-    FromStr(&b, s)
+    FromStr(&b, s, false)
+    if a == b {
+        t.Errorf("failed readonly roundtrip of %v via '%s', got %v, expected %v", a, s, b, c)
+    }
+    FromStr(&b, s, true)
     if a != b {
-        t.Errorf("failed to roundtrip %v via '%s', got %v", a, s, b)
+        t.Errorf("failed write roundtrip %v via '%s', got %v", a, s, b)
     }
 
     s = StrConv(&a)
-    FromStr(&b, s)
+    b = c
+    FromStr(&b, s, false)
+    if a == b {
+        t.Errorf("failed readonly roundtrip %v via '%s', got %v, expected %v", a, s, b, c)
+    }
+    FromStr(&b, s, true)
     if a != b {
-        t.Errorf("failed to roundtrip %v via '%s', got %v", a, s, b)
+        t.Errorf("failed write roundtrip %v via '%s', got %v", a, s, b)
     }
 
     sa := []bool{true,false,true,}
     sb := []bool{}
     s = StrConv(sa, WithSep("="))
-    err := FromStr(&sb, s, WithSep("="))
+    err := FromStr(&sb, s, false, WithSep("="))
+    if err != nil {
+        t.Errorf("error converting '%s' (readonly): %v", s, err)
+    }
+    if len(sb) != 0 {
+        t.Errorf("readonly vector not empty converting '%s': %v", s, err)
+    }
+    err = FromStr(&sb, s, true, WithSep("="))
     if err != nil {
         t.Errorf("error converting '%s': %v", s, err)
     }
@@ -370,7 +386,14 @@ func TestStrConv_bool(t *testing.T) {
 
     s = StrConv(&sa, WithSep("="))
     sb = sb[:0]
-    err = FromStr(&sb, s, WithSep("="))
+    err = FromStr(&sb, s, false, WithSep("="))
+    if err != nil {
+        t.Errorf("error converting '%s' (readonly): %v", s, err)
+    }
+    if len(sb) != 0 {
+        t.Errorf("readonly vector not empty converting '%s': %v", s, err)
+    }
+    err = FromStr(&sb, s, true, WithSep("="))
     if err != nil {
         t.Errorf("error converting '%s': %v", s, err)
     }
@@ -384,23 +407,39 @@ func TestStrConv_bool(t *testing.T) {
 
 func TestStrConv_int(t *testing.T) {
     a := int(-3)
-    var b int
+    var b, c int
     s := StrConv(a)
-    FromStr(&b, s)
+    FromStr(&b, s, false)
+    if a == b {
+        t.Errorf("failed readonly roundtrip of %v via '%s', got %v, expected %v", a, s, b, c)
+    }
+    FromStr(&b, s, true)
     if a != b {
-        t.Errorf("failed to roundtrip %v via '%s', got %v", a, s, b)
+        t.Errorf("failed write roundtrip %v via '%s', got %v", a, s, b)
     }
 
     s = StrConv(&a)
-    FromStr(&b, s)
+    b = c
+    FromStr(&b, s, false)
+    if a == b {
+        t.Errorf("failed readonly roundtrip %v via '%s', got %v, expected %v", a, s, b, c)
+    }
+    FromStr(&b, s, true)
     if a != b {
-        t.Errorf("failed to roundtrip %v via '%s', got %v", a, s, b)
+        t.Errorf("failed write roundtrip %v via '%s', got %v", a, s, b)
     }
 
     sa := []int{3,2,1,}
     sb := []int{}
     s = StrConv(sa, WithSep("/"))
-    err := FromStr(&sb, s, WithSep("/"))
+    err := FromStr(&sb, s, false, WithSep("/"))
+    if err != nil {
+        t.Errorf("error converting '%s' (readonly): %v", s, err)
+    }
+    if len(sb) != 0 {
+        t.Errorf("readonly vector not empty converting '%s': %v", s, err)
+    }
+    err = FromStr(&sb, s, true, WithSep("/"))
     if err != nil {
         t.Errorf("error converting '%s': %v", s, err)
     }
@@ -413,7 +452,14 @@ func TestStrConv_int(t *testing.T) {
 
     s = StrConv(&sa, WithSep("/"))
     sb = sb[:0]
-    err = FromStr(&sb, s, WithSep("/"))
+    err = FromStr(&sb, s, false, WithSep("/"))
+    if err != nil {
+        t.Errorf("error converting '%s' (readonly): %v", s, err)
+    }
+    if len(sb) != 0 {
+        t.Errorf("readonly vector not empty converting '%s': %v", s, err)
+    }
+    err = FromStr(&sb, s, true, WithSep("/"))
     if err != nil {
         t.Errorf("error converting '%s': %v", s, err)
     }
@@ -427,23 +473,39 @@ func TestStrConv_int(t *testing.T) {
 
 func TestStrConv_int8(t *testing.T) {
     a := int8(3)
-    var b int8
+    var b, c int8
     s := StrConv(a)
-    FromStr(&b, s)
+    FromStr(&b, s, false)
+    if a == b {
+        t.Errorf("failed readonly roundtrip of %v via '%s', got %v, expected %v", a, s, b, c)
+    }
+    FromStr(&b, s, true)
     if a != b {
-        t.Errorf("failed to roundtrip %v via '%s', got %v", a, s, b)
+        t.Errorf("failed write roundtrip %v via '%s', got %v", a, s, b)
     }
 
     s = StrConv(&a)
-    FromStr(&b, s)
+    b = c
+    FromStr(&b, s, false)
+    if a == b {
+        t.Errorf("failed readonly roundtrip %v via '%s', got %v, expected %v", a, s, b, c)
+    }
+    FromStr(&b, s, true)
     if a != b {
-        t.Errorf("failed to roundtrip %v via '%s', got %v", a, s, b)
+        t.Errorf("failed write roundtrip %v via '%s', got %v", a, s, b)
     }
 
     sa := []int8{3,+2,1,}
     sb := []int8{}
     s = StrConv(sa, WithSep("|"))
-    err := FromStr(&sb, s, WithSep("|"))
+    err := FromStr(&sb, s, false, WithSep("|"))
+    if err != nil {
+        t.Errorf("error converting '%s' (readonly): %v", s, err)
+    }
+    if len(sb) != 0 {
+        t.Errorf("readonly vector not empty converting '%s': %v", s, err)
+    }
+    err = FromStr(&sb, s, true, WithSep("|"))
     if err != nil {
         t.Errorf("error converting '%s': %v", s, err)
     }
@@ -456,7 +518,14 @@ func TestStrConv_int8(t *testing.T) {
 
     s = StrConv(&sa, WithSep("|"))
     sb = sb[:0]
-    err = FromStr(&sb, s, WithSep("|"))
+    err = FromStr(&sb, s, false, WithSep("|"))
+    if err != nil {
+        t.Errorf("error converting '%s' (readonly): %v", s, err)
+    }
+    if len(sb) != 0 {
+        t.Errorf("readonly vector not empty converting '%s': %v", s, err)
+    }
+    err = FromStr(&sb, s, true, WithSep("|"))
     if err != nil {
         t.Errorf("error converting '%s': %v", s, err)
     }
@@ -470,23 +539,39 @@ func TestStrConv_int8(t *testing.T) {
 
 func TestStrConv_int16(t *testing.T) {
     a := int16(-9)
-    var b int16
+    var b, c int16
     s := StrConv(a)
-    FromStr(&b, s)
+    FromStr(&b, s, false)
+    if a == b {
+        t.Errorf("failed readonly roundtrip of %v via '%s', got %v, expected %v", a, s, b, c)
+    }
+    FromStr(&b, s, true)
     if a != b {
-        t.Errorf("failed to roundtrip %v via '%s', got %v", a, s, b)
+        t.Errorf("failed write roundtrip %v via '%s', got %v", a, s, b)
     }
 
     s = StrConv(&a)
-    FromStr(&b, s)
+    b = c
+    FromStr(&b, s, false)
+    if a == b {
+        t.Errorf("failed readonly roundtrip %v via '%s', got %v, expected %v", a, s, b, c)
+    }
+    FromStr(&b, s, true)
     if a != b {
-        t.Errorf("failed to roundtrip %v via '%s', got %v", a, s, b)
+        t.Errorf("failed write roundtrip %v via '%s', got %v", a, s, b)
     }
 
     sa := []int16{-3,2,-1,}
     sb := []int16{}
     s = StrConv(sa, WithSep("%"))
-    err := FromStr(&sb, s, WithSep("%"))
+    err := FromStr(&sb, s, false, WithSep("%"))
+    if err != nil {
+        t.Errorf("error converting '%s' (readonly): %v", s, err)
+    }
+    if len(sb) != 0 {
+        t.Errorf("readonly vector not empty converting '%s': %v", s, err)
+    }
+    err = FromStr(&sb, s, true, WithSep("%"))
     if err != nil {
         t.Errorf("error converting '%s': %v", s, err)
     }
@@ -499,7 +584,14 @@ func TestStrConv_int16(t *testing.T) {
 
     s = StrConv(&sa, WithSep("%"))
     sb = sb[:0]
-    err = FromStr(&sb, s, WithSep("%"))
+    err = FromStr(&sb, s, false, WithSep("%"))
+    if err != nil {
+        t.Errorf("error converting '%s' (readonly): %v", s, err)
+    }
+    if len(sb) != 0 {
+        t.Errorf("readonly vector not empty converting '%s': %v", s, err)
+    }
+    err = FromStr(&sb, s, true, WithSep("%"))
     if err != nil {
         t.Errorf("error converting '%s': %v", s, err)
     }
@@ -513,23 +605,39 @@ func TestStrConv_int16(t *testing.T) {
 
 func TestStrConv_int32(t *testing.T) {
     a := int32(3)
-    var b int32
+    var b, c int32
     s := StrConv(a)
-    FromStr(&b, s)
+    FromStr(&b, s, false)
+    if a == b {
+        t.Errorf("failed readonly roundtrip of %v via '%s', got %v, expected %v", a, s, b, c)
+    }
+    FromStr(&b, s, true)
     if a != b {
-        t.Errorf("failed to roundtrip %v via '%s', got %v", a, s, b)
+        t.Errorf("failed write roundtrip %v via '%s', got %v", a, s, b)
     }
 
     s = StrConv(&a)
-    FromStr(&b, s)
+    b = c
+    FromStr(&b, s, false)
+    if a == b {
+        t.Errorf("failed readonly roundtrip %v via '%s', got %v, expected %v", a, s, b, c)
+    }
+    FromStr(&b, s, true)
     if a != b {
-        t.Errorf("failed to roundtrip %v via '%s', got %v", a, s, b)
+        t.Errorf("failed write roundtrip %v via '%s', got %v", a, s, b)
     }
 
     sa := []int32{3,-2,1,}
     sb := []int32{}
     s = StrConv(sa, WithSep("###"))
-    err := FromStr(&sb, s, WithSep("###"))
+    err := FromStr(&sb, s, false, WithSep("###"))
+    if err != nil {
+        t.Errorf("error converting '%s' (readonly): %v", s, err)
+    }
+    if len(sb) != 0 {
+        t.Errorf("readonly vector not empty converting '%s': %v", s, err)
+    }
+    err = FromStr(&sb, s, true, WithSep("###"))
     if err != nil {
         t.Errorf("error converting '%s': %v", s, err)
     }
@@ -542,7 +650,14 @@ func TestStrConv_int32(t *testing.T) {
 
     s = StrConv(&sa, WithSep("###"))
     sb = sb[:0]
-    err = FromStr(&sb, s, WithSep("###"))
+    err = FromStr(&sb, s, false, WithSep("###"))
+    if err != nil {
+        t.Errorf("error converting '%s' (readonly): %v", s, err)
+    }
+    if len(sb) != 0 {
+        t.Errorf("readonly vector not empty converting '%s': %v", s, err)
+    }
+    err = FromStr(&sb, s, true, WithSep("###"))
     if err != nil {
         t.Errorf("error converting '%s': %v", s, err)
     }
@@ -556,23 +671,39 @@ func TestStrConv_int32(t *testing.T) {
 
 func TestStrConv_int64(t *testing.T) {
     a := int64(3)
-    var b int64
+    var b, c int64
     s := StrConv(a)
-    FromStr(&b, s)
+    FromStr(&b, s, false)
+    if a == b {
+        t.Errorf("failed readonly roundtrip of %v via '%s', got %v, expected %v", a, s, b, c)
+    }
+    FromStr(&b, s, true)
     if a != b {
-        t.Errorf("failed to roundtrip %v via '%s', got %v", a, s, b)
+        t.Errorf("failed write roundtrip %v via '%s', got %v", a, s, b)
     }
 
     s = StrConv(&a)
-    FromStr(&b, s)
+    b = c
+    FromStr(&b, s, false)
+    if a == b {
+        t.Errorf("failed readonly roundtrip %v via '%s', got %v, expected %v", a, s, b, c)
+    }
+    FromStr(&b, s, true)
     if a != b {
-        t.Errorf("failed to roundtrip %v via '%s', got %v", a, s, b)
+        t.Errorf("failed write roundtrip %v via '%s', got %v", a, s, b)
     }
 
     sa := []int64{3,2,1,}
     sb := []int64{}
     s = StrConv(sa, WithSep("/"))
-    err := FromStr(&sb, s, WithSep("/"))
+    err := FromStr(&sb, s, false, WithSep("/"))
+    if err != nil {
+        t.Errorf("error converting '%s' (readonly): %v", s, err)
+    }
+    if len(sb) != 0 {
+        t.Errorf("readonly vector not empty converting '%s': %v", s, err)
+    }
+    err = FromStr(&sb, s, true, WithSep("/"))
     if err != nil {
         t.Errorf("error converting '%s': %v", s, err)
     }
@@ -585,7 +716,14 @@ func TestStrConv_int64(t *testing.T) {
 
     s = StrConv(&sa, WithSep("/"))
     sb = sb[:0]
-    err = FromStr(&sb, s, WithSep("/"))
+    err = FromStr(&sb, s, false, WithSep("/"))
+    if err != nil {
+        t.Errorf("error converting '%s' (readonly): %v", s, err)
+    }
+    if len(sb) != 0 {
+        t.Errorf("readonly vector not empty converting '%s': %v", s, err)
+    }
+    err = FromStr(&sb, s, true, WithSep("/"))
     if err != nil {
         t.Errorf("error converting '%s': %v", s, err)
     }
@@ -599,23 +737,39 @@ func TestStrConv_int64(t *testing.T) {
 
 func TestStrConv_uint(t *testing.T) {
     a := uint(3)
-    var b uint
+    var b, c uint
     s := StrConv(a)
-    FromStr(&b, s)
+    FromStr(&b, s, false)
+    if a == b {
+        t.Errorf("failed readonly roundtrip of %v via '%s', got %v, expected %v", a, s, b, c)
+    }
+    FromStr(&b, s, true)
     if a != b {
-        t.Errorf("failed to roundtrip %v via '%s', got %v", a, s, b)
+        t.Errorf("failed write roundtrip %v via '%s', got %v", a, s, b)
     }
 
     s = StrConv(&a)
-    FromStr(&b, s)
+    b = c
+    FromStr(&b, s, false)
+    if a == b {
+        t.Errorf("failed readonly roundtrip %v via '%s', got %v, expected %v", a, s, b, c)
+    }
+    FromStr(&b, s, true)
     if a != b {
-        t.Errorf("failed to roundtrip %v via '%s', got %v", a, s, b)
+        t.Errorf("failed write roundtrip %v via '%s', got %v", a, s, b)
     }
 
     sa := []uint{3,+2,1,}
     sb := []uint{}
     s = StrConv(sa, WithSep("/"))
-    err := FromStr(&sb, s, WithSep("/"))
+    err := FromStr(&sb, s, false, WithSep("/"))
+    if err != nil {
+        t.Errorf("error converting '%s' (readonly): %v", s, err)
+    }
+    if len(sb) != 0 {
+        t.Errorf("readonly vector not empty converting '%s': %v", s, err)
+    }
+    err = FromStr(&sb, s, true, WithSep("/"))
     if err != nil {
         t.Errorf("error converting '%s': %v", s, err)
     }
@@ -628,7 +782,14 @@ func TestStrConv_uint(t *testing.T) {
 
     s = StrConv(&sa, WithSep("/"))
     sb = sb[:0]
-    err = FromStr(&sb, s, WithSep("/"))
+    err = FromStr(&sb, s, false, WithSep("/"))
+    if err != nil {
+        t.Errorf("error converting '%s' (readonly): %v", s, err)
+    }
+    if len(sb) != 0 {
+        t.Errorf("readonly vector not empty converting '%s': %v", s, err)
+    }
+    err = FromStr(&sb, s, true, WithSep("/"))
     if err != nil {
         t.Errorf("error converting '%s': %v", s, err)
     }
@@ -642,23 +803,39 @@ func TestStrConv_uint(t *testing.T) {
 
 func TestStrConv_uint8(t *testing.T) {
     a := uint8(3)
-    var b uint8
+    var b, c uint8
     s := StrConv(a)
-    FromStr(&b, s)
+    FromStr(&b, s, false)
+    if a == b {
+        t.Errorf("failed readonly roundtrip of %v via '%s', got %v, expected %v", a, s, b, c)
+    }
+    FromStr(&b, s, true)
     if a != b {
-        t.Errorf("failed to roundtrip %v via '%s', got %v", a, s, b)
+        t.Errorf("failed write roundtrip %v via '%s', got %v", a, s, b)
     }
 
     s = StrConv(&a)
-    FromStr(&b, s)
+    b = c
+    FromStr(&b, s, false)
+    if a == b {
+        t.Errorf("failed readonly roundtrip %v via '%s', got %v, expected %v", a, s, b, c)
+    }
+    FromStr(&b, s, true)
     if a != b {
-        t.Errorf("failed to roundtrip %v via '%s', got %v", a, s, b)
+        t.Errorf("failed write roundtrip %v via '%s', got %v", a, s, b)
     }
 
     sa := []uint8{3,2,1,}
     sb := []uint8{}
     s = StrConv(sa, WithSep("/"))
-    err := FromStr(&sb, s, WithSep("/"))
+    err := FromStr(&sb, s, false, WithSep("/"))
+    if err != nil {
+        t.Errorf("error converting '%s' (readonly): %v", s, err)
+    }
+    if len(sb) != 0 {
+        t.Errorf("readonly vector not empty converting '%s': %v", s, err)
+    }
+    err = FromStr(&sb, s, true, WithSep("/"))
     if err != nil {
         t.Errorf("error converting '%s': %v", s, err)
     }
@@ -671,7 +848,14 @@ func TestStrConv_uint8(t *testing.T) {
 
     s = StrConv(&sa, WithSep("/"))
     sb = sb[:0]
-    err = FromStr(&sb, s, WithSep("/"))
+    err = FromStr(&sb, s, false, WithSep("/"))
+    if err != nil {
+        t.Errorf("error converting '%s' (readonly): %v", s, err)
+    }
+    if len(sb) != 0 {
+        t.Errorf("readonly vector not empty converting '%s': %v", s, err)
+    }
+    err = FromStr(&sb, s, true, WithSep("/"))
     if err != nil {
         t.Errorf("error converting '%s': %v", s, err)
     }
@@ -685,23 +869,39 @@ func TestStrConv_uint8(t *testing.T) {
 
 func TestStrConv_uint16(t *testing.T) {
     a := uint16(3)
-    var b uint16
+    var b, c uint16
     s := StrConv(a)
-    FromStr(&b, s)
+    FromStr(&b, s, false)
+    if a == b {
+        t.Errorf("failed readonly roundtrip of %v via '%s', got %v, expected %v", a, s, b, c)
+    }
+    FromStr(&b, s, true)
     if a != b {
-        t.Errorf("failed to roundtrip %v via '%s', got %v", a, s, b)
+        t.Errorf("failed write roundtrip %v via '%s', got %v", a, s, b)
     }
 
     s = StrConv(&a)
-    FromStr(&b, s)
+    b = c
+    FromStr(&b, s, false)
+    if a == b {
+        t.Errorf("failed readonly roundtrip %v via '%s', got %v, expected %v", a, s, b, c)
+    }
+    FromStr(&b, s, true)
     if a != b {
-        t.Errorf("failed to roundtrip %v via '%s', got %v", a, s, b)
+        t.Errorf("failed write roundtrip %v via '%s', got %v", a, s, b)
     }
 
     sa := []uint16{3,2,1,}
     sb := []uint16{}
     s = StrConv(sa, WithSep("/"))
-    err := FromStr(&sb, s, WithSep("/"))
+    err := FromStr(&sb, s, false, WithSep("/"))
+    if err != nil {
+        t.Errorf("error converting '%s' (readonly): %v", s, err)
+    }
+    if len(sb) != 0 {
+        t.Errorf("readonly vector not empty converting '%s': %v", s, err)
+    }
+    err = FromStr(&sb, s, true, WithSep("/"))
     if err != nil {
         t.Errorf("error converting '%s': %v", s, err)
     }
@@ -714,7 +914,14 @@ func TestStrConv_uint16(t *testing.T) {
 
     s = StrConv(&sa, WithSep("/"))
     sb = sb[:0]
-    err = FromStr(&sb, s, WithSep("/"))
+    err = FromStr(&sb, s, false, WithSep("/"))
+    if err != nil {
+        t.Errorf("error converting '%s' (readonly): %v", s, err)
+    }
+    if len(sb) != 0 {
+        t.Errorf("readonly vector not empty converting '%s': %v", s, err)
+    }
+    err = FromStr(&sb, s, true, WithSep("/"))
     if err != nil {
         t.Errorf("error converting '%s': %v", s, err)
     }
@@ -728,23 +935,39 @@ func TestStrConv_uint16(t *testing.T) {
 
 func TestStrConv_uint32(t *testing.T) {
     a := uint32(3)
-    var b uint32
+    var b, c uint32
     s := StrConv(a)
-    FromStr(&b, s)
+    FromStr(&b, s, false)
+    if a == b {
+        t.Errorf("failed readonly roundtrip of %v via '%s', got %v, expected %v", a, s, b, c)
+    }
+    FromStr(&b, s, true)
     if a != b {
-        t.Errorf("failed to roundtrip %v via '%s', got %v", a, s, b)
+        t.Errorf("failed write roundtrip %v via '%s', got %v", a, s, b)
     }
 
     s = StrConv(&a)
-    FromStr(&b, s)
+    b = c
+    FromStr(&b, s, false)
+    if a == b {
+        t.Errorf("failed readonly roundtrip %v via '%s', got %v, expected %v", a, s, b, c)
+    }
+    FromStr(&b, s, true)
     if a != b {
-        t.Errorf("failed to roundtrip %v via '%s', got %v", a, s, b)
+        t.Errorf("failed write roundtrip %v via '%s', got %v", a, s, b)
     }
 
     sa := []uint32{3,2,1,}
     sb := []uint32{}
     s = StrConv(sa, WithSep("/"))
-    err := FromStr(&sb, s, WithSep("/"))
+    err := FromStr(&sb, s, false, WithSep("/"))
+    if err != nil {
+        t.Errorf("error converting '%s' (readonly): %v", s, err)
+    }
+    if len(sb) != 0 {
+        t.Errorf("readonly vector not empty converting '%s': %v", s, err)
+    }
+    err = FromStr(&sb, s, true, WithSep("/"))
     if err != nil {
         t.Errorf("error converting '%s': %v", s, err)
     }
@@ -757,7 +980,14 @@ func TestStrConv_uint32(t *testing.T) {
 
     s = StrConv(&sa, WithSep("/"))
     sb = sb[:0]
-    err = FromStr(&sb, s, WithSep("/"))
+    err = FromStr(&sb, s, false, WithSep("/"))
+    if err != nil {
+        t.Errorf("error converting '%s' (readonly): %v", s, err)
+    }
+    if len(sb) != 0 {
+        t.Errorf("readonly vector not empty converting '%s': %v", s, err)
+    }
+    err = FromStr(&sb, s, true, WithSep("/"))
     if err != nil {
         t.Errorf("error converting '%s': %v", s, err)
     }
@@ -771,23 +1001,39 @@ func TestStrConv_uint32(t *testing.T) {
 
 func TestStrConv_uint64(t *testing.T) {
     a := uint64(3)
-    var b uint64
+    var b, c uint64
     s := StrConv(a)
-    FromStr(&b, s)
+    FromStr(&b, s, false)
+    if a == b {
+        t.Errorf("failed readonly roundtrip of %v via '%s', got %v, expected %v", a, s, b, c)
+    }
+    FromStr(&b, s, true)
     if a != b {
-        t.Errorf("failed to roundtrip %v via '%s', got %v", a, s, b)
+        t.Errorf("failed write roundtrip %v via '%s', got %v", a, s, b)
     }
 
     s = StrConv(&a)
-    FromStr(&b, s)
+    b = c
+    FromStr(&b, s, false)
+    if a == b {
+        t.Errorf("failed readonly roundtrip %v via '%s', got %v, expected %v", a, s, b, c)
+    }
+    FromStr(&b, s, true)
     if a != b {
-        t.Errorf("failed to roundtrip %v via '%s', got %v", a, s, b)
+        t.Errorf("failed write roundtrip %v via '%s', got %v", a, s, b)
     }
 
     sa := []uint64{3,2,1,}
     sb := []uint64{}
     s = StrConv(sa, WithSep("/"))
-    err := FromStr(&sb, s, WithSep("/"))
+    err := FromStr(&sb, s, false, WithSep("/"))
+    if err != nil {
+        t.Errorf("error converting '%s' (readonly): %v", s, err)
+    }
+    if len(sb) != 0 {
+        t.Errorf("readonly vector not empty converting '%s': %v", s, err)
+    }
+    err = FromStr(&sb, s, true, WithSep("/"))
     if err != nil {
         t.Errorf("error converting '%s': %v", s, err)
     }
@@ -800,7 +1046,14 @@ func TestStrConv_uint64(t *testing.T) {
 
     s = StrConv(&sa, WithSep("/"))
     sb = sb[:0]
-    err = FromStr(&sb, s, WithSep("/"))
+    err = FromStr(&sb, s, false, WithSep("/"))
+    if err != nil {
+        t.Errorf("error converting '%s' (readonly): %v", s, err)
+    }
+    if len(sb) != 0 {
+        t.Errorf("readonly vector not empty converting '%s': %v", s, err)
+    }
+    err = FromStr(&sb, s, true, WithSep("/"))
     if err != nil {
         t.Errorf("error converting '%s': %v", s, err)
     }
@@ -814,23 +1067,39 @@ func TestStrConv_uint64(t *testing.T) {
 
 func TestStrConv_float32(t *testing.T) {
     a := float32(3)
-    var b float32
+    var b, c float32
     s := StrConv(a)
-    FromStr(&b, s)
+    FromStr(&b, s, false)
+    if a == b {
+        t.Errorf("failed readonly roundtrip of %v via '%s', got %v, expected %v", a, s, b, c)
+    }
+    FromStr(&b, s, true)
     if a != b {
-        t.Errorf("failed to roundtrip %v via '%s', got %v", a, s, b)
+        t.Errorf("failed write roundtrip %v via '%s', got %v", a, s, b)
     }
 
     s = StrConv(&a)
-    FromStr(&b, s)
+    b = c
+    FromStr(&b, s, false)
+    if a == b {
+        t.Errorf("failed readonly roundtrip %v via '%s', got %v, expected %v", a, s, b, c)
+    }
+    FromStr(&b, s, true)
     if a != b {
-        t.Errorf("failed to roundtrip %v via '%s', got %v", a, s, b)
+        t.Errorf("failed write roundtrip %v via '%s', got %v", a, s, b)
     }
 
     sa := []float32{3,2,1,}
     sb := []float32{}
     s = StrConv(sa, WithSep("/"))
-    err := FromStr(&sb, s, WithSep("/"))
+    err := FromStr(&sb, s, false, WithSep("/"))
+    if err != nil {
+        t.Errorf("error converting '%s' (readonly): %v", s, err)
+    }
+    if len(sb) != 0 {
+        t.Errorf("readonly vector not empty converting '%s': %v", s, err)
+    }
+    err = FromStr(&sb, s, true, WithSep("/"))
     if err != nil {
         t.Errorf("error converting '%s': %v", s, err)
     }
@@ -843,7 +1112,14 @@ func TestStrConv_float32(t *testing.T) {
 
     s = StrConv(&sa, WithSep("/"))
     sb = sb[:0]
-    err = FromStr(&sb, s, WithSep("/"))
+    err = FromStr(&sb, s, false, WithSep("/"))
+    if err != nil {
+        t.Errorf("error converting '%s' (readonly): %v", s, err)
+    }
+    if len(sb) != 0 {
+        t.Errorf("readonly vector not empty converting '%s': %v", s, err)
+    }
+    err = FromStr(&sb, s, true, WithSep("/"))
     if err != nil {
         t.Errorf("error converting '%s': %v", s, err)
     }
@@ -857,23 +1133,39 @@ func TestStrConv_float32(t *testing.T) {
 
 func TestStrConv_float64(t *testing.T) {
     a := float64(3)
-    var b float64
+    var b, c float64
     s := StrConv(a)
-    FromStr(&b, s)
+    FromStr(&b, s, false)
+    if a == b {
+        t.Errorf("failed readonly roundtrip of %v via '%s', got %v, expected %v", a, s, b, c)
+    }
+    FromStr(&b, s, true)
     if a != b {
-        t.Errorf("failed to roundtrip %v via '%s', got %v", a, s, b)
+        t.Errorf("failed write roundtrip %v via '%s', got %v", a, s, b)
     }
 
     s = StrConv(&a)
-    FromStr(&b, s)
+    b = c
+    FromStr(&b, s, false)
+    if a == b {
+        t.Errorf("failed readonly roundtrip %v via '%s', got %v, expected %v", a, s, b, c)
+    }
+    FromStr(&b, s, true)
     if a != b {
-        t.Errorf("failed to roundtrip %v via '%s', got %v", a, s, b)
+        t.Errorf("failed write roundtrip %v via '%s', got %v", a, s, b)
     }
 
     sa := []float64{3,2,1,}
     sb := []float64{}
     s = StrConv(sa, WithSep("/"))
-    err := FromStr(&sb, s, WithSep("/"))
+    err := FromStr(&sb, s, false, WithSep("/"))
+    if err != nil {
+        t.Errorf("error converting '%s' (readonly): %v", s, err)
+    }
+    if len(sb) != 0 {
+        t.Errorf("readonly vector not empty converting '%s': %v", s, err)
+    }
+    err = FromStr(&sb, s, true, WithSep("/"))
     if err != nil {
         t.Errorf("error converting '%s': %v", s, err)
     }
@@ -886,7 +1178,14 @@ func TestStrConv_float64(t *testing.T) {
 
     s = StrConv(&sa, WithSep("/"))
     sb = sb[:0]
-    err = FromStr(&sb, s, WithSep("/"))
+    err = FromStr(&sb, s, false, WithSep("/"))
+    if err != nil {
+        t.Errorf("error converting '%s' (readonly): %v", s, err)
+    }
+    if len(sb) != 0 {
+        t.Errorf("readonly vector not empty converting '%s': %v", s, err)
+    }
+    err = FromStr(&sb, s, true, WithSep("/"))
     if err != nil {
         t.Errorf("error converting '%s': %v", s, err)
     }
@@ -900,23 +1199,39 @@ func TestStrConv_float64(t *testing.T) {
 
 func TestStrConv_byte(t *testing.T) {
     a := byte(3)
-    var b byte
+    var b, c byte
     s := StrConv(a)
-    FromStr(&b, s)
+    FromStr(&b, s, false)
+    if a == b {
+        t.Errorf("failed readonly roundtrip of %v via '%s', got %v, expected %v", a, s, b, c)
+    }
+    FromStr(&b, s, true)
     if a != b {
-        t.Errorf("failed to roundtrip %v via '%s', got %v", a, s, b)
+        t.Errorf("failed write roundtrip %v via '%s', got %v", a, s, b)
     }
 
     s = StrConv(&a)
-    FromStr(&b, s)
+    b = c
+    FromStr(&b, s, false)
+    if a == b {
+        t.Errorf("failed readonly roundtrip %v via '%s', got %v, expected %v", a, s, b, c)
+    }
+    FromStr(&b, s, true)
     if a != b {
-        t.Errorf("failed to roundtrip %v via '%s', got %v", a, s, b)
+        t.Errorf("failed write roundtrip %v via '%s', got %v", a, s, b)
     }
 
     sa := []byte{3,2,1,}
     sb := []byte{}
     s = StrConv(sa, WithSep("/"))
-    err := FromStr(&sb, s, WithSep("/"))
+    err := FromStr(&sb, s, false, WithSep("/"))
+    if err != nil {
+        t.Errorf("error converting '%s' (readonly): %v", s, err)
+    }
+    if len(sb) != 0 {
+        t.Errorf("readonly vector not empty converting '%s': %v", s, err)
+    }
+    err = FromStr(&sb, s, true, WithSep("/"))
     if err != nil {
         t.Errorf("error converting '%s': %v", s, err)
     }
@@ -929,7 +1244,14 @@ func TestStrConv_byte(t *testing.T) {
 
     s = StrConv(&sa, WithSep("/"))
     sb = sb[:0]
-    err = FromStr(&sb, s, WithSep("/"))
+    err = FromStr(&sb, s, false, WithSep("/"))
+    if err != nil {
+        t.Errorf("error converting '%s' (readonly): %v", s, err)
+    }
+    if len(sb) != 0 {
+        t.Errorf("readonly vector not empty converting '%s': %v", s, err)
+    }
+    err = FromStr(&sb, s, true, WithSep("/"))
     if err != nil {
         t.Errorf("error converting '%s': %v", s, err)
     }
@@ -943,23 +1265,39 @@ func TestStrConv_byte(t *testing.T) {
 
 func TestStrConv_rune(t *testing.T) {
     a := rune(3)
-    var b rune
+    var b, c rune
     s := StrConv(a)
-    FromStr(&b, s)
+    FromStr(&b, s, false)
+    if a == b {
+        t.Errorf("failed readonly roundtrip of %v via '%s', got %v, expected %v", a, s, b, c)
+    }
+    FromStr(&b, s, true)
     if a != b {
-        t.Errorf("failed to roundtrip %v via '%s', got %v", a, s, b)
+        t.Errorf("failed write roundtrip %v via '%s', got %v", a, s, b)
     }
 
     s = StrConv(&a)
-    FromStr(&b, s)
+    b = c
+    FromStr(&b, s, false)
+    if a == b {
+        t.Errorf("failed readonly roundtrip %v via '%s', got %v, expected %v", a, s, b, c)
+    }
+    FromStr(&b, s, true)
     if a != b {
-        t.Errorf("failed to roundtrip %v via '%s', got %v", a, s, b)
+        t.Errorf("failed write roundtrip %v via '%s', got %v", a, s, b)
     }
 
     sa := []rune{3,2,1,}
     sb := []rune{}
     s = StrConv(sa, WithSep("/"))
-    err := FromStr(&sb, s, WithSep("/"))
+    err := FromStr(&sb, s, false, WithSep("/"))
+    if err != nil {
+        t.Errorf("error converting '%s' (readonly): %v", s, err)
+    }
+    if len(sb) != 0 {
+        t.Errorf("readonly vector not empty converting '%s': %v", s, err)
+    }
+    err = FromStr(&sb, s, true, WithSep("/"))
     if err != nil {
         t.Errorf("error converting '%s': %v", s, err)
     }
@@ -972,7 +1310,14 @@ func TestStrConv_rune(t *testing.T) {
 
     s = StrConv(&sa, WithSep("/"))
     sb = sb[:0]
-    err = FromStr(&sb, s, WithSep("/"))
+    err = FromStr(&sb, s, false, WithSep("/"))
+    if err != nil {
+        t.Errorf("error converting '%s' (readonly): %v", s, err)
+    }
+    if len(sb) != 0 {
+        t.Errorf("readonly vector not empty converting '%s': %v", s, err)
+    }
+    err = FromStr(&sb, s, true, WithSep("/"))
     if err != nil {
         t.Errorf("error converting '%s': %v", s, err)
     }
@@ -986,23 +1331,39 @@ func TestStrConv_rune(t *testing.T) {
 
 func TestStrConv_string(t *testing.T) {
     a := string("foo")
-    var b string
+    var b, c string
     s := StrConv(a)
-    FromStr(&b, s)
+    FromStr(&b, s, false)
+    if a == b {
+        t.Errorf("failed readonly roundtrip of %v via '%s', got %v, expected %v", a, s, b, c)
+    }
+    FromStr(&b, s, true)
     if a != b {
-        t.Errorf("failed to roundtrip %v via '%s', got %v", a, s, b)
+        t.Errorf("failed write roundtrip %v via '%s', got %v", a, s, b)
     }
 
     s = StrConv(&a)
-    FromStr(&b, s)
+    b = c
+    FromStr(&b, s, false)
+    if a == b {
+        t.Errorf("failed readonly roundtrip %v via '%s', got %v, expected %v", a, s, b, c)
+    }
+    FromStr(&b, s, true)
     if a != b {
-        t.Errorf("failed to roundtrip %v via '%s', got %v", a, s, b)
+        t.Errorf("failed write roundtrip %v via '%s', got %v", a, s, b)
     }
 
     sa := []string{"foo","bar","baz",}
     sb := []string{}
     s = StrConv(sa, WithSep("/"))
-    err := FromStr(&sb, s, WithSep("/"))
+    err := FromStr(&sb, s, false, WithSep("/"))
+    if err != nil {
+        t.Errorf("error converting '%s' (readonly): %v", s, err)
+    }
+    if len(sb) != 0 {
+        t.Errorf("readonly vector not empty converting '%s': %v", s, err)
+    }
+    err = FromStr(&sb, s, true, WithSep("/"))
     if err != nil {
         t.Errorf("error converting '%s': %v", s, err)
     }
@@ -1015,7 +1376,14 @@ func TestStrConv_string(t *testing.T) {
 
     s = StrConv(&sa, WithSep("/"))
     sb = sb[:0]
-    err = FromStr(&sb, s, WithSep("/"))
+    err = FromStr(&sb, s, false, WithSep("/"))
+    if err != nil {
+        t.Errorf("error converting '%s' (readonly): %v", s, err)
+    }
+    if len(sb) != 0 {
+        t.Errorf("readonly vector not empty converting '%s': %v", s, err)
+    }
+    err = FromStr(&sb, s, true, WithSep("/"))
     if err != nil {
         t.Errorf("error converting '%s': %v", s, err)
     }

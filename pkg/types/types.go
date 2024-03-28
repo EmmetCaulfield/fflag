@@ -813,10 +813,13 @@ func StrConv(ix interface{}, opts ...StrConvOption) string {
 	return buf.String()
 }
 
-func FromStr(ix interface{}, str string, opts ...StrConvOption) error {
+func FromStr(ix interface{}, str string, doSet bool, opts ...StrConvOption) error {
 	// Prefer the SetValue interface
 	if settee, ok := ix.(SetValue); ok {
-		return settee.Set(str)
+		if doSet {
+			return settee.Set(str)
+		}
+		return nil
 	}
 
 	param := &StrConvParams{
@@ -843,7 +846,9 @@ func FromStr(ix interface{}, str string, opts ...StrConvOption) error {
 		if err != nil {
 			return err
 		}
-		*v = b
+		if doSet {
+			*v = b
+		}
 		return nil
 	case *[]bool:
 		for _, item := range strings.Split(str, param.sep) {
@@ -852,7 +857,9 @@ func FromStr(ix interface{}, str string, opts ...StrConvOption) error {
 			if err != nil {
 				return err
 			}
-			*v = append(*v, b)
+			if doSet {
+				*v = append(*v, b)
+			}
 		}
 		return nil
 
@@ -862,7 +869,9 @@ func FromStr(ix interface{}, str string, opts ...StrConvOption) error {
 		if err != nil {
 			return err
 		}
-		*v = uint(u64)
+		if doSet {
+			*v = uint(u64)
+		}
 		return nil
 	case *[]uint:
 		for _, item := range strings.Split(str, param.sep) {
@@ -871,7 +880,9 @@ func FromStr(ix interface{}, str string, opts ...StrConvOption) error {
 			if err != nil {
 				return err
 			}
-			*v = append(*v, uint(u64))
+			if doSet {
+				*v = append(*v, uint(u64))
+			}
 		}
 		return nil
 
@@ -880,7 +891,9 @@ func FromStr(ix interface{}, str string, opts ...StrConvOption) error {
 		if err != nil {
 			return err
 		}
-		*v = uint8(u64)
+		if doSet {
+			*v = uint8(u64)
+		}
 		return nil
 	case *[]uint8:
 		for _, item := range strings.Split(str, param.sep) {
@@ -889,7 +902,9 @@ func FromStr(ix interface{}, str string, opts ...StrConvOption) error {
 			if err != nil {
 				return err
 			}
-			*v = append(*v, uint8(u64))
+			if doSet {
+				*v = append(*v, uint8(u64))
+			}
 		}
 		return nil
 
@@ -898,7 +913,9 @@ func FromStr(ix interface{}, str string, opts ...StrConvOption) error {
 		if err != nil {
 			return err
 		}
-		*v = uint16(u64)
+		if doSet {
+			*v = uint16(u64)
+		}
 		return nil
 	case *[]uint16:
 		for _, item := range strings.Split(str, param.sep) {
@@ -907,7 +924,9 @@ func FromStr(ix interface{}, str string, opts ...StrConvOption) error {
 			if err != nil {
 				return err
 			}
-			*v = append(*v, uint16(u64))
+			if doSet {
+				*v = append(*v, uint16(u64))
+			}
 		}
 		return nil
 
@@ -916,7 +935,9 @@ func FromStr(ix interface{}, str string, opts ...StrConvOption) error {
 		if err != nil {
 			return err
 		}
-		*v = uint32(u64)
+		if doSet {
+			*v = uint32(u64)
+		}
 		return nil
 	case *[]uint32:
 		for _, item := range strings.Split(str, param.sep) {
@@ -925,7 +946,9 @@ func FromStr(ix interface{}, str string, opts ...StrConvOption) error {
 			if err != nil {
 				return err
 			}
-			*v = append(*v, uint32(u64))
+			if doSet {
+				*v = append(*v, uint32(u64))
+			}
 		}
 		return nil
 
@@ -934,7 +957,9 @@ func FromStr(ix interface{}, str string, opts ...StrConvOption) error {
 		if err != nil {
 			return err
 		}
-		*v = u64
+		if doSet {
+			*v = u64
+		}
 		return nil
 	case *[]uint64:
 		for _, item := range strings.Split(str, param.sep) {
@@ -943,7 +968,9 @@ func FromStr(ix interface{}, str string, opts ...StrConvOption) error {
 			if err != nil {
 				return err
 			}
-			*v = append(*v, u64)
+			if doSet {
+				*v = append(*v, u64)
+			}
 		}
 		return nil
 
@@ -953,7 +980,9 @@ func FromStr(ix interface{}, str string, opts ...StrConvOption) error {
 		if err != nil {
 			return err
 		}
-		*v = int(i64)
+		if doSet {
+			*v = int(i64)
+		}
 		return nil
 	case *[]int:
 		for _, item := range strings.Split(str, param.sep) {
@@ -962,7 +991,9 @@ func FromStr(ix interface{}, str string, opts ...StrConvOption) error {
 			if err != nil {
 				return err
 			}
-			*v = append(*v, int(i64))
+			if doSet {
+				*v = append(*v, int(i64))
+			}
 		}
 		return nil
 
@@ -971,7 +1002,9 @@ func FromStr(ix interface{}, str string, opts ...StrConvOption) error {
 		if err != nil {
 			return err
 		}
-		*v = int8(i64)
+		if doSet {
+			*v = int8(i64)
+		}
 		return nil
 	case *[]int8:
 		for _, item := range strings.Split(str, param.sep) {
@@ -980,7 +1013,9 @@ func FromStr(ix interface{}, str string, opts ...StrConvOption) error {
 			if err != nil {
 				return err
 			}
-			*v = append(*v, int8(i64))
+			if doSet {
+				*v = append(*v, int8(i64))
+			}
 		}
 		return nil
 
@@ -989,7 +1024,9 @@ func FromStr(ix interface{}, str string, opts ...StrConvOption) error {
 		if err != nil {
 			return err
 		}
-		*v = int16(i64)
+		if doSet {
+			*v = int16(i64)
+		}
 		return nil
 	case *[]int16:
 		for _, item := range strings.Split(str, param.sep) {
@@ -998,7 +1035,9 @@ func FromStr(ix interface{}, str string, opts ...StrConvOption) error {
 			if err != nil {
 				return err
 			}
-			*v = append(*v, int16(i64))
+			if doSet {
+				*v = append(*v, int16(i64))
+			}
 		}
 		return nil
 
@@ -1007,7 +1046,9 @@ func FromStr(ix interface{}, str string, opts ...StrConvOption) error {
 		if err != nil {
 			return err
 		}
-		*v = int32(i64)
+		if doSet {
+			*v = int32(i64)
+		}
 		return nil
 	case *[]int32:
 		for _, item := range strings.Split(str, param.sep) {
@@ -1016,7 +1057,9 @@ func FromStr(ix interface{}, str string, opts ...StrConvOption) error {
 			if err != nil {
 				return err
 			}
-			*v = append(*v, int32(i64))
+			if doSet {
+				*v = append(*v, int32(i64))
+			}
 		}
 		return nil
 
@@ -1025,7 +1068,9 @@ func FromStr(ix interface{}, str string, opts ...StrConvOption) error {
 		if err != nil {
 			return err
 		}
-		*v = i64
+		if doSet {
+			*v = i64
+		}
 		return nil
 	case *[]int64:
 		for _, item := range strings.Split(str, param.sep) {
@@ -1034,7 +1079,9 @@ func FromStr(ix interface{}, str string, opts ...StrConvOption) error {
 			if err != nil {
 				return err
 			}
-			*v = append(*v, i64)
+			if doSet {
+				*v = append(*v, i64)
+			}
 		}
 		return nil
 
@@ -1044,7 +1091,9 @@ func FromStr(ix interface{}, str string, opts ...StrConvOption) error {
 		if err != nil {
 			return err
 		}
-		*v = float32(f64)
+		if doSet {
+			*v = float32(f64)
+		}
 		return nil
 	case *[]float32:
 		for _, item := range strings.Split(str, param.sep) {
@@ -1053,7 +1102,9 @@ func FromStr(ix interface{}, str string, opts ...StrConvOption) error {
 			if err != nil {
 				return err
 			}
-			*v = append(*v, float32(f64))
+			if doSet {
+				*v = append(*v, float32(f64))
+			}
 		}
 		return nil
 
@@ -1062,7 +1113,9 @@ func FromStr(ix interface{}, str string, opts ...StrConvOption) error {
 		if err != nil {
 			return err
 		}
-		*v = f64
+		if doSet {
+			*v = f64
+		}
 		return nil
 	case *[]float64:
 		for _, item := range strings.Split(str, param.sep) {
@@ -1071,18 +1124,24 @@ func FromStr(ix interface{}, str string, opts ...StrConvOption) error {
 			if err != nil {
 				return err
 			}
-			*v = append(*v, f64)
+			if doSet {
+				*v = append(*v, f64)
+			}
 		}
 		return nil
 
 	// Strings - a little silly, but for completeness
 	case *string:
-		*v = str
+		if doSet {
+			*v = str
+		}
 		return nil
 	case *[]string:
 		for _, item := range strings.Split(str, param.sep) {
 			// trimmed := strings.TrimSpace(item)
-			*v = append(*v, item)
+			if doSet {
+				*v = append(*v, item)
+			}
 		}
 		return nil
 
