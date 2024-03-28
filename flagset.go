@@ -81,6 +81,13 @@ func (fs *FlagSet) Group() *FlagGroup {
 }
 
 func Group(title string) {
+	fs := CommandLine
+	// If there's only one group and no flags yet, just rename the
+	// group
+	if len(fs.Groups) == 1 && !fs.HasFlags() {
+		fs.Groups[0].Title = title
+		return
+	}
 	_ = CommandLine.NewFlagGroup(title)
 }
 
