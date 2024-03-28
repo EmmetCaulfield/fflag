@@ -259,6 +259,11 @@ func Type(ix interface{}) TypeId {
 	return typeId
 }
 
+func IsBool(ix interface{}) bool {
+	typeId := Type(ix)
+	return typeId.TstBoolBit()
+}
+
 func IsNum(ix interface{}) bool {
 	typeId := Type(ix)
 	return typeId.TstAnyNumBit()

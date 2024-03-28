@@ -312,6 +312,7 @@ const (
 	RepeatsBit        FlagType = 0b0000000010000000
 	IgnoreRepeatsBit  FlagType = 0b0000000100000000
 	FileBit           FlagType = 0b0000001000000000
+	DefOptionalBit    FlagType = 0b0000010000000000
 )
 
 func (ft *FlagType) TstLongAliasBit() bool      { return *ft&LongAliasBit != 0 }
@@ -324,6 +325,7 @@ func (ft *FlagType) TstCounterBit() bool        { return *ft&CounterBit != 0 }
 func (ft *FlagType) TstRepeatsBit() bool        { return *ft&RepeatsBit != 0 }
 func (ft *FlagType) TstIgnoreRepeatsBit() bool  { return *ft&IgnoreRepeatsBit != 0 }
 func (ft *FlagType) TstFileBit() bool           { return *ft&FileBit != 0 }
+func (ft *FlagType) TstDefOptionalBit() bool    { return *ft&DefOptionalBit != 0 }
 func (ft *FlagType) TstAliasBits() bool         { return (*ft&ShortAliasBit)|(*ft&LongAliasBit) != 0 }
 
 func (ft *FlagType) ClrLongAliasBit()      { *ft = *ft & ^LongAliasBit }
@@ -336,6 +338,7 @@ func (ft *FlagType) ClrCounterBit()        { *ft = *ft & ^CounterBit }
 func (ft *FlagType) ClrRepeatsBit()        { *ft = *ft & ^RepeatsBit }
 func (ft *FlagType) ClrIgnoreRepeatsBit()  { *ft = *ft & ^IgnoreRepeatsBit }
 func (ft *FlagType) ClrFileBit()           { *ft = *ft & ^FileBit }
+func (ft *FlagType) ClrDefOptionalBit()    { *ft = *ft & ^DefOptionalBit }
 
 func (ft *FlagType) SetLongAliasBit()      { *ft = *ft | LongAliasBit }
 func (ft *FlagType) SetShortAliasBit()     { *ft = *ft | ShortAliasBit }
@@ -347,6 +350,7 @@ func (ft *FlagType) SetCounterBit()        { *ft = *ft | CounterBit }
 func (ft *FlagType) SetRepeatsBit()        { *ft = *ft | RepeatsBit }
 func (ft *FlagType) SetIgnoreRepeatsBit()  { *ft = *ft | IgnoreRepeatsBit }
 func (ft *FlagType) SetFileBit()           { *ft = *ft | FileBit }
+func (ft *FlagType) SetDefOptionalBit()    { *ft = *ft | DefOptionalBit }
 
 type Flag struct {
 	Value         interface{}
@@ -360,6 +364,7 @@ type Flag struct {
 	Usage         string
 	Callback      CallbackFunction
 	ListSeparator string
+	Mutexes       map[string]struct{}
 	parentFlagSet *FlagSet
 }
 
@@ -473,7 +478,28 @@ func (f *Flag) ParentFlagSet() *FlagSet {
 	return f.parentFlagSet
 }
 
+func (f *Flag) MutexCollides() *Flag {
+	if f.Mutexes == nil || len(f.Mutexes) == 0 {
+		return nil
+	}
+	fs := f.ParentFlagSet()
+	for name, _ := range f.Mutexes {
+		if flag, ok := fs.Mutex[name]; ok {
+			if flag != nil {
+				return flag
+			}
+			fs.Mutex[name] = f
+		}
+	}
+	return nil
+}
+
 func (f *Flag) Set(value interface{}, argPos int) error {
+	prev := f.MutexCollides()
+	if prev != nil {
+		f.Failf("flag '%s' collides with previously given flag '%s'", f, prev)
+		return &FlagError{"mutex collision in Flag.Set()"}
+	}
 	// Prefer the SetValue interface if present:
 	if setter, ok := f.Value.(types.SetValue); ok {
 		if str, ok := value.(string); ok {
@@ -724,16 +750,27 @@ func (f *Flag) String() string {
 
 // Returns f.String() wrapped in extra stuff for help/usage output
 func (f *Flag) FlagString() string {
+	if f.Short == NoShort && f.Long == NoLong {
+		return "-NUM"
+	}
 	buf := &bytes.Buffer{}
+	tag := f.GetTypeTag()
 	if f.Short == NoShort {
 		buf.WriteString(`    `)
+	} else {
+		buf.WriteString("-" + string(f.Short))
+		if !f.IsAlias() && len(tag) > 0 {
+			buf.WriteString(" " + tag)
+		}
+		if f.Long != NoLong {
+			buf.WriteString(", ")
+		}
 	}
-	buf.WriteString(f.String())
-
-	tag := f.GetTypeTag()
-	if len(tag) > 0 {
-		buf.WriteRune('=')
-		buf.WriteString(tag)
+	if f.Long != NoLong {
+		buf.WriteString("--" + f.Long)
+		if !f.IsAlias() && len(tag) > 0 {
+			buf.WriteString("=" + tag)
+		}
 	}
 	return buf.String()
 }
@@ -746,6 +783,11 @@ func (f *Flag) DescString() string {
 		}
 		buf.WriteString("synonym for ")
 		buf.WriteString(f.AliasFor.String())
+		if f.Value != nil {
+			if value, ok := f.Value.(string); ok {
+				buf.WriteString("=" + value)
+			}
+		}
 		return buf.String()
 	}
 	if f.Type.TstNotImplementedBit() {
@@ -772,42 +814,46 @@ func (f *Flag) SortKey() string {
 	return string(f.Short) + f.Long
 }
 
-type FlagOption = func(f *Flag)
+type FlagOption = func(f *Flag) error
 
-type AliasOption = func(f *Flag)
+type AliasOption = func(f *Flag) error
 
 func WithParent(fs *FlagSet) FlagOption {
-	return func(f *Flag) {
+	return func(f *Flag) error {
 		if f.parentFlagSet != nil && f.parentFlagSet != fs {
 			log.Panicf("attempt to change parent flagset in fflag.WithParent() for %s", f)
 		}
 		f.parentFlagSet = fs
+		return nil
 	}
 }
 
 func WithValue(value string) AliasOption {
-	return func(f *Flag) {
+	return func(f *Flag) error {
 		f.Value = value
+		return nil
 	}
 }
 
 func WithListSeparator(sep rune) FlagOption {
-	return func(f *Flag) {
+	return func(f *Flag) error {
 		if !types.IsSlice(f.Value) {
 			log.Panicf("cannot set separator for non-list value %s", f)
 		}
 		f.ListSeparator = string(sep)
+		return nil
 	}
 }
 
 func WithAlias(short rune, long string, obsolete bool) FlagOption {
-	return func(f *Flag) {
+	return func(f *Flag) error {
 		var flag *Flag = nil
-		flag = f.ParentFlagSet().LookupLong(long)
+		fs := f.ParentFlagSet()
+		flag = fs.LookupLong(long)
 		if flag != nil {
 			log.Panicf("long flag '%s' already exists for alias '%s'", flag, long)
 		}
-		flag = f.ParentFlagSet().LookupShort(short)
+		flag = fs.LookupShort(short)
 		if flag != nil {
 			log.Panicf("short flag '%s' already exists for alias '%c'", flag, short)
 		}
@@ -820,54 +866,71 @@ func WithAlias(short rune, long string, obsolete bool) FlagOption {
 		} else {
 			flag.Type.ClrObsoleteBit()
 		}
-		err := f.ParentFlagSet().AddFlag(flag)
+		err := fs.AddFlag(flag)
 		if err != nil {
-			f.Failf("Error adding alias: %v", err)
+			log.Panicf("Error adding alias '%s': %v", flag, err)
 		}
+		return nil
 	}
 }
 
+func (f *Flag) setupDefault(def interface{}, optional bool) error {
+	defType := types.Type(def)
+	// Always allow the default to be a string or a slice of
+	// strings since the value-to-set will come from the
+	// command-line and be a string anyway
+	if !defType.TstStringBit() {
+		valType := types.Type(f.Value)
+		if valType.TstSetterBit() {
+			// We shouldn't be here if f.Value implements the
+			// SetValue interface, because that always takes a
+			// string so the default should be a string.
+			log.Panicf("non-string default for '%s' where value implements SetValue interface", f)
+		}
+		if !types.SameBaseType(valType, defType) {
+			log.Panicf("type mismatch: default type <%T> for value type <%T> in '%s'", def, f.Value, f)
+		}
+	}
+	if optional {
+		f.Type.SetDefOptionalBit()
+		return nil
+	}
+	f.Type.ClrDefOptionalBit()
+	// Set the default value
+	f.Default = def
+	def = f.GetDefault()
+	err := types.FromStr(f.Value, types.StrConv(def))
+	if err != nil {
+		log.Panicf("failed to set value to default (%v) for '%s'", f.Default, f)
+	}
+	return nil
+}
+
 func WithDefault(def interface{}) FlagOption {
-	return func(f *Flag) {
-		defType := types.Type(def)
-		// Always allow the default to be a string or a slice of
-		// strings since the value-to-set will come from the
-		// command-line and be a string anyway
-		if !defType.TstStringBit() {
-			valType := types.Type(f.Value)
-			if valType.TstSetterBit() {
-				// We shouldn't be here if f.Value implements the
-				// SetValue interface, because that always takes a
-				// string so the default should be a string.
-				log.Panicf("non-string default for '%s' where value implements SetValue interface", f)
-			}
-			if !types.SameBaseType(valType, defType) {
-				log.Panicf("type mismatch: default type <%T> for value type <%T> in '%s'", def, f.Value, f)
-			}
+	return func(f *Flag) error {
+		return f.setupDefault(def, false)
+	}
+}
+
+func WithOptionalDefault(def interface{}) FlagOption {
+	return func(f *Flag) error {
+		if f.IsBool() {
+			log.Panicf("optional default makes no sense for boolean flag '%s'", f)
 		}
-		// Set the default value
-		f.Default = def
-		def = f.GetDefault()
-		err := types.FromStr(f.Value, types.StrConv(def))
-		if err != nil {
-			log.Panicf("failed to set value to default (%v) for '%s'", f.Default, f)
-		}
+		return f.setupDefault(def, true)
 	}
 }
 
 func WithRepeats(ignore bool) FlagOption {
-	return func(f *Flag) {
+	return func(f *Flag) error {
 		if f.HasCallback() {
-			f.Warnf("WithRepeats() is redundant if WithCallback() is used (%s)", f)
-			return
+			log.Panicf("WithRepeats() is redundant if WithCallback() is used (%s)", f)
 		}
 		if f.IsCounter() {
-			f.Warnf("WithRepeats() is redundant if AsCounter() is used (%s)", f)
-			return
+			log.Panicf("WithRepeats() is redundant if AsCounter() is used (%s)", f)
 		}
 		if !f.IsScalar() {
-			f.Warnf("WithRepeats() is redundant if the value is not a scalar (%s)", f)
-			return
+			log.Panicf("WithRepeats() is redundant if the value is not a scalar (%s)", f)
 		}
 
 		f.Type.SetRepeatsBit()
@@ -877,24 +940,26 @@ func WithRepeats(ignore bool) FlagOption {
 			// Shouldn't be necessary, but...
 			f.Type.ClrIgnoreRepeatsBit()
 		}
+		return nil
 	}
 }
 
 func AsCounter() FlagOption {
-	return func(f *Flag) {
+	return func(f *Flag) error {
 		if f.HasCallback() {
-			panic("cannot use flag with callback as counter")
+			log.Panicf("cannot use flag '%s' with callback as counter", f)
 		}
 		if !f.IsScalar() {
-			panic("cannot use non-scalar (slice/object) as counter")
+			log.Panicf("cannot use non-scalar (type %T) as counter for '%s'", f.Value, f)
 		}
 		if !f.IsNumber() {
-			panic("counter variable must be a number")
+			log.Panicf("counter variable must be a number, not type %T, for '%s'", f.Value, f)
 		}
 		if f.IsRepeatable() {
-			f.Warnf("WithRepeats() is irrelevant if AsCounter() is used (%s)", f)
+			log.Panicf("WithRepeats() is irrelevant for counter '%s'", f)
 		}
 		f.Type.SetCounterBit()
+		return nil
 	}
 }
 
@@ -903,42 +968,44 @@ func AsCounter() FlagOption {
 // particular option to be implemented, but it hasn't been for some
 // reason other than deprecation/obsolesence.
 func NotImplemented() FlagOption {
-	return func(f *Flag) {
+	return func(f *Flag) error {
 		f.Type.SetNotImplementedBit()
+		return nil
 	}
 }
 
 func Deprecated() FlagOption {
-	return func(f *Flag) {
+	return func(f *Flag) error {
 		f.Type.SetObsoleteBit()
+		return nil
 	}
 }
 
 func Obsolete() FlagOption {
-	return func(f *Flag) {
-		f.Type.SetObsoleteBit()
-	}
+	return Deprecated()
 }
 
 func WithTypeTag(tag string) FlagOption {
-	return func(f *Flag) {
+	return func(f *Flag) error {
 		f.ValueTypeTag = tag
+		return nil
 	}
 }
 
 func WithCallback(callback CallbackFunction) FlagOption {
-	return func(f *Flag) {
+	return func(f *Flag) error {
 		if f.IsCounter() {
 			log.Panicf("callback supplied for counter '%s'", f)
 		}
 		f.Callback = callback
+		return nil
 	}
 }
 
 // A file-reading flag can't be a counter, have a callback, or be an
 // alias:
 func ReadFile() FlagOption {
-	return func(f *Flag) {
+	return func(f *Flag) error {
 		if f.IsCounter() {
 			log.Panicf("counter flag '%s' cannot be a file reader", f)
 		}
@@ -952,24 +1019,38 @@ func ReadFile() FlagOption {
 			log.Panicf("value of file reader flag '%s' must point at a slice", f)
 		}
 		f.Type.SetFileBit()
+		return nil
+	}
+}
+
+func InMutex(name string) FlagOption {
+	return func(f *Flag) error {
+		fs := f.ParentFlagSet()
+		fs.Mutex[name] = nil
+		if _, ok := f.Mutexes[name]; ok {
+			log.Panicf("flag '%s' added to mutex '%s' more than once", f, name)
+		} else {
+			f.Mutexes[name] = struct{}{}
+		}
+		return nil
 	}
 }
 
 func NewFlag(value interface{}, short rune, long string, usage string, opts ...FlagOption) *Flag {
 	// We potentially use the type identifier several times
-	typeId := types.Type(value)
+	valType := types.Type(value)
 
 	// Require pointers as storage targets:
-	if !typeId.TstPointerBit() {
+	if !valType.TstPointerBit() {
 		return nil
 	}
 	// Don't allow non-empty slices as storage targets:
-	if typeId.TstSliceBit() && types.SliceLen(value) != 0 {
+	if valType.TstSliceBit() && types.SliceLen(value) != 0 {
 		return nil
 	}
 	// We don't know what to do with things that are neither basic
 	// types nor implement the SetValue interface:
-	if typeId.TstOtherBit() {
+	if valType.TstOtherBit() {
 		log.Panicf("value type <%T> is not supported", value)
 	}
 	if !IsValidPair(short, long) {
@@ -977,7 +1058,7 @@ func NewFlag(value interface{}, short rune, long string, usage string, opts ...F
 	}
 	if short == NoShort && long == NoLong {
 		// Special -NUM idiom
-		if typeId.TstSliceBit() || !typeId.TstUintBit() {
+		if valType.TstSliceBit() || !valType.TstUintBit() {
 			log.Panicf("a scalar unsigned integer is required for the -NUM idiom")
 		}
 	}
@@ -988,12 +1069,16 @@ func NewFlag(value interface{}, short rune, long string, usage string, opts ...F
 		Usage:         usage,
 		Count:         0,
 		ListSeparator: DefaultListSeparator,
+		Mutexes:       map[string]struct{}{},
 	}
-	if types.IsSlice(value) {
+	if valType.TstSliceBit() {
 		f.Type.SetRepeatsBit()
 	}
-	for _, opt := range opts {
-		opt(f)
+	for i, opt := range opts {
+		err := opt(f)
+		if err != nil {
+			log.Panicf("error setting option %d for flag '%s'", i, f)
+		}
 	}
 	return f
 }
@@ -1025,8 +1110,11 @@ func (f *Flag) NewAlias(short rune, long string, opts ...FlagOption) *Flag {
 		parentFlagSet: f.parentFlagSet,
 	}
 
-	for _, opt := range opts {
-		opt(a)
+	for i, opt := range opts {
+		err := opt(a)
+		if err != nil {
+			log.Panicf("error setting option %d for alias '%s'", i, f)
+		}
 	}
 
 	return a
@@ -1061,6 +1149,9 @@ func (f *Flag) IgnoreRepeats() bool {
 }
 func (f *Flag) IsScalar() bool {
 	return !types.IsSlice(f.Value)
+}
+func (f *Flag) IsBool() bool {
+	return types.IsBool(f.Value)
 }
 func (f *Flag) IsNumber() bool {
 	return types.IsNum(f.Value)

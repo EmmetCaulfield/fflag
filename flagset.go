@@ -4,6 +4,7 @@ import(
 	"fmt"
 	"io"
 	"os"
+	"strings"
 	
 	"github.com/EmmetCaulfield/fflag/pkg/deque"
 )
@@ -49,8 +50,8 @@ func NewFlagGroup(title string) *FlagGroup {
 type FlagSet struct {
 	Groups             []*FlagGroup
 	GroupIndex         int
-	LongDict          map[string]*Flag
-	ShortDict         map[rune]*Flag
+	LongDict           map[string]*Flag
+	ShortDict          map[rune]*Flag
 	Output             io.Writer
 	IgnoreDoubleDash   bool
 	HasHyphenNumIdiom  bool
@@ -60,6 +61,7 @@ type FlagSet struct {
 	FailExitCode       int
 	OnFileError        FailOption
 	FileErrExitCode    int
+	Mutex              map[string]*Flag
 }
 
 var DefaultFailExitCode int = 2
@@ -90,8 +92,8 @@ func NewFlagSet(opts ...FlagSetOption) *FlagSet {
 			NewFlagGroup("Options"),
 		},
 		GroupIndex:       0,
-		LongDict:        map[string]*Flag{},
-		ShortDict:       map[rune]*Flag{},
+		LongDict:         map[string]*Flag{},
+		ShortDict:        map[rune]*Flag{},
 		Output:           os.Stderr,
 		IgnoreDoubleDash: false,
 		InputArgs:        &deque.Deque[string]{},
@@ -100,6 +102,7 @@ func NewFlagSet(opts ...FlagSetOption) *FlagSet {
 		FailExitCode:     DefaultFailExitCode,
 		OnFileError:      FailDefault,
 		FileErrExitCode:  DefaultFileErrExitCode,
+		Mutex:            map[string]*Flag{},
 	}
 	for _, opt := range opts {
 		opt(fs)
@@ -202,25 +205,20 @@ func (fs *FlagSet) AddFlag(f *Flag) error {
 	if f == nil {
 		return fmt.Errorf("cannot add nil flag")
 	}
-	// We must have
-	//   * a valid long and no short; OR
-	//   * a valid short and an empty long; OR
-	//   * a valid long AND a valid short; OR
-	//   * an empty long AND no short (for -NUM special case)
-	if (!IsValidLong(f.Long) && f.Long != "") || (!IsValidShort(f.Short) && f.Short != NoShort) {
-		return fmt.Errorf("flag has neither a long nor a shortcut short")
+	if !IsValidPair(f.Short, f.Long) {
+		return fmt.Errorf("flag '%s' has invalid short/long flags", f)
 	}
-	fs.Infof("Adding: %s", f)
-	if len(f.Long) > 0 {
-		if g, ok := fs.LongDict[f.Long]; ok {
-			return fmt.Errorf("shortcut '%c' already used for '%s'", f.Short, g.Long)
-		}
+	if g, ok := fs.LongDict[f.Long]; f.Long != NoLong && ok {
+		return fmt.Errorf("long flag '%s' already used for '%s'", f.Long, g)
+	}
+	if f.Long != NoLong || f.Short == NoShort {
 		fs.LongDict[f.Long] = f
+	} 
+
+	if g, ok := fs.ShortDict[f.Short]; f.Short != NoShort && ok {
+		return fmt.Errorf("shortcut '%c' already used for '%s'", f.Short, g.Long)
 	}
-	if f.Short != rune(0) {
-		if g, ok := fs.ShortDict[f.Short]; ok {
-			return fmt.Errorf("shortcut '%c' already used for '%s'", f.Short, g.Long)
-		}
+	if f.Short != NoShort || f.Long == NoLong {
 		fs.ShortDict[f.Short] = f
 	}
 
@@ -286,6 +284,10 @@ func (fs *FlagSet) DumpFlags() {
 	}
 }
 
+func (fs *FlagSet) DumpUsage() {
+	fmt.Println(strings.Join(fs.AlignedFlagDescriptions("  ", "  ", ""), "\n"))
+}
+
 func (fs *FlagSet) Failf(format string, args ...interface{}) {
 	if !fs.OnFail.TstSilentBit() {
 		fmt.Fprintf(fs.Output, "ERROR: " + format + "\n", args...)
@@ -326,7 +328,7 @@ func (fs *FlagSet) AlignedFlagDescriptions(pre, mid, post string) []string {
 	fstrs := []string{}
 	maxl := fs.FlagStringMaxLen()
 	for _, g := range fs.Groups {
-		fstrs = append(fstrs, g.Title)
+		fstrs = append(fstrs, "\n" + g.Title + "\n")
 		for _, f := range g.FlagList {
 			s := fmt.Sprintf("%s%-*s%s%s%s", pre, maxl, f.FlagString(), mid, f.DescString(), post)
 			fstrs = append(fstrs, s)
