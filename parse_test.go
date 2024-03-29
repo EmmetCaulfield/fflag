@@ -14,7 +14,8 @@ func unmute() {
 	CommandLine.OnFail.ClrSilentBit()
 }
 
-func TestPosixisms(t *testing.T) {
+func TestPosixisms(u *testing.T) {
+	t := assert.TestingT(u)
 	unmute()
 	b := false
 	assert.Panics(t, func() { Var(&b, '?', "", "should panic") })

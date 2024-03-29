@@ -235,9 +235,61 @@ func parseSingleArg(arg string) (flags []string, param string, argType ArgMask) 
 	return
 }
 
+// DisambiguateCluster decides how an apparent/possible cluster is to
+// be disambiguated.
+//
+// The cluster `-fgh` has 3 possible legal interpretations under POSIX
+// rules.
+//
+//   * f() g() h()
+//   * f() g(h)
+//   * f(gh)
+//
+// We work from left-to-right, giving precedence to interpretation as
+// a flag. Once a non-flag is encountered, the rest of the string is
+// assumed to be an option-argument to the last flag.
+func (fs *FlagSet) disambiguateCluster(flags []string, param string, pos int) *Flag {
+	// Process clusters by POSIX rules where the last flag in
+	// the cluster can have an option-argument.
+	var optarg string
+	var prev, curr *Flag
+	for i, s := range flags {
+		prev = curr
+		curr = fs.Lookup(s)
+		if curr == nil {
+			// Non-flag: this and whatever follows must be an attached
+			// option-argument to the previous flag
+			optarg = strings.Join(flags[i:], "")
+			if param != "" {
+				optarg += "=" + param
+			}
+			err := prev.Set(optarg, pos)
+			if err != nil {
+				// We may return (or not) after Fail depending on OnFail setting
+				fs.Failf("failed to set '%s' with '%s': %v", prev, optarg, err)
+			}
+			return nil
+		}
+		// curr is a *Flag
+		err := prev.Set(nil, pos)
+		if err != nil {
+			fs.Failf("failed to set '%s' with nil: %v", prev, err)
+			continue
+		}
+	}
+	// We now have the last flag in `curr` that hasn't been acted on
+	last := fs.Lookup(flags[len(flags)-1])
+	if last == nil {
+		fs.Failf("short flag '-%s' not defined in cluster '%s'", flags[len(flags)-1], strings.Join(flags, ""))
+	}
+	// We return the last flag without acting on it in case there's an
+	// unattached option-argument (aka parameter)
+	return last
+}
+
 // Function StopParsing moves all remaining input arguments to the
 // output slice, optionally discarding the first element of the input
-func (fs *FlagSet) StopParsing(shift bool) {
+func (fs *FlagSet) stopParsing(shift bool) {
 	if shift {
 		_, _ = fs.InputArgs.Shift()
 	}
@@ -248,45 +300,31 @@ func (fs *FlagSet) StopParsing(shift bool) {
 func (fs *FlagSet) parse() error {
 	var err error
 	var i int = 0
-NEXTARG:
+
 	for arg, err := fs.InputArgs.Shift(); err == nil; arg, err = fs.InputArgs.Shift() {
 		i++
 		flags, param, argType := parseSingleArg(arg)
 		if !argType.IsFlag() {
 			fs.OutputArgs.Push(param)
 			if PosixOperandStop {
-				fs.StopParsing(false)
+				fs.stopParsing(false)
 				return nil
 			}
-			continue NEXTARG
+			continue
 		}
 		if argType.IsDoubleHyphen() {
 			// arg can't be an option-argument at this point, so we
 			// terminate processing under either POSIX or GNU rules
-			fs.StopParsing(false)
+			fs.stopParsing(false)
 			return nil
 		}
 		var flag *Flag = nil
 		if argType.IsCluster() {
-			// Process clusters by POSIX rules where the last flag in
-			// the cluster can have an option-argument
-			for _, s := range flags[:len(flags)-1] {
-				flag = fs.Lookup(s)
-				if flag == nil {
-					fs.Failf("short flag '-%s' in cluster '%s' is not defined", s, arg)
-					continue
-				}
-				err = flag.Set(nil, i)
-				if err != nil {
-					fs.Failf("failed to set flag '%s' from cluster '%s': %v", flag, arg, err)
-					continue
-				}
-				continue NEXTARG
-			}
-			last := flags[len(flags)-1]
-			flag = fs.Lookup(last)
+			// It's parsed as a cluster, but that doesn't mean it
+			// is. It could be a flag with an attached argument.
+			flag = fs.disambiguateCluster(flags, param, i)
 			if flag == nil {
-				fs.Failf("short flag '-%s' not defined in cluster '%s'", last, arg)
+				// Fully handled in fs.disambiguateCluster()
 				continue
 			}
 		} else {
@@ -297,13 +335,21 @@ NEXTARG:
 			}
 		}
 		if argType.HasParam() {
-			err = flag.Set(param, i)
+			// This must've been attached with an '=', so if it's a
+			// short flag, the '=' is part of the argument under POSIX
+			// rules
+			if argType.IsShortFlag() && PosixEquals {
+				err = flag.Set("="+param, i)
+			} else {
+				err = flag.Set(param, i)
+			}
 			if err != nil {
 				fs.Failf("failed to set flag `%s` with '%s': %v", flag.String(), param, err)
 			}
-			continue NEXTARG
+			continue
 		}
-		// Peek at the next argument
+		// Peek at the next argument to see if it's a parameter (aka
+		// option-argument)
 		next, err := fs.InputArgs.Front()
 		if err != nil {
 			// End of InputArgs
@@ -321,7 +367,7 @@ NEXTARG:
 				// Under POSIX rules, we don't terminate if the
 				// double-hyphen is an option-argument
 				if !PosixDoubleHyphen {
-					fs.StopParsing(true)
+					fs.stopParsing(true)
 					return nil
 				}
 			}
@@ -332,7 +378,7 @@ NEXTARG:
 				_, _ = fs.InputArgs.Shift()
 				i++
 			}
-			continue NEXTARG
+			continue
 		}
 		// Next arg is a flag, current flag has no parameter
 		err = flag.Set(nil, i)
