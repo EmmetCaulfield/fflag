@@ -288,6 +288,14 @@ var PosixEquals bool = true
 // terminating option processing is followed.
 var PosixDoubleHyphen bool = true
 
+// POSIX mandates that argument processing is terminated when the
+// first non-option argument, which it calls an operand, is
+// encountered. When set to false, the GNU convention (allowing a
+// mixture of option and non-option) is followed and arguments that
+// are not processable as options or option-arguments are appended to
+// the operand list as they are encountered.
+var PosixOperandStop bool = true
+
 type FlagError struct {
 	s string
 }
@@ -890,7 +898,7 @@ func WithParent(fs *FlagSet) FlagOption {
 	}
 }
 
-func WithValue(value string) AliasOption {
+func withValue(value string) AliasOption {
 	return func(f *Flag) error {
 		f.Value = value
 		return nil

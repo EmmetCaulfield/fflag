@@ -258,7 +258,7 @@ func (fs *FlagSet) Equ(short rune, long string, equiv string, value string) {
 	if f == nil {
 		panic("flag not found in equivalent lookup")
 	}
-	a := f.NewAlias(short, long, WithValue(value))
+	a := f.NewAlias(short, long, withValue(value))
 	err := fs.AddFlag(a)
 	if err != nil {
 		f.Failf("Error adding alias: %v", err)

@@ -55,8 +55,12 @@ func (d *Deque[T]) Front() (T, error) {
 	return (*d)[0], nil
 }
 
-func (d *Deque[T]) Init(items ...T) {
+func (d *Deque[T]) Clear() {
 	*d = (*d)[:0]
+}
+
+func (d *Deque[T]) Init(items ...T) {
+	d.Clear()
 	d.Append(items...)
 }
 

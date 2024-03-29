@@ -16,17 +16,28 @@ import (
 //   * Optional
 //   * Required
 //
-// There are 9 valid possibilities:
+// There are several valid possibilities:
 //
-//   * `--flag`        prohibited/optional
-//   * `--flag=value`  optional/required
-//   * `--flag value`  optional/required
-//   * `-f`            prohibited/optional
-//   * `-f=value`      optional/required
-//   * `-f value`      optional/required
-//   * `-fgh`          -f, -g, -h : prohibited/optional
-//   * `-fgh=foo`      -f, -g : prohibited/optional, -h : optional/required
-//   * `-fgh foo`      -f, -g : prohibited/optional, -h : optional/required
+//   * `--flag`          --flag()       : prohibited/optional
+//   * `--flag=value`    --flag(value)  : optional/required
+//   * `--flag value`    --flag(value)  : required/optional
+//   * `--flag operand`  --flag()       : prohibited/optional
+//   * `-f`              -f()           : prohibited/optional
+//   * `-f opd`          -f()           : prohibited/optional
+//   * `-f=arg`          -f(=arg)       : optional/required (POSIX)
+//   * `-f=arg`          -f(arg)        : optional/required (GNU-ish de-facto, non-POSIX)
+//   * `-f arg`          -f(arg)        : optional/required
+//   * `-farg`           -f(arg)        : optional/required
+//   * `-fgh`            -f() -g() -h() :
+//   * `-fgh`            -f() -g(h)     :
+//   * `-fgh`            -f(gh)         :
+//   * `-fgh=arg`        -f() -g() -h(=arg)
+//   * `-fgh=arg`        -f() -g() -h(arg)
+//   * `-fgh=arg`        -f() -g(h=arg)
+//   * `-fgh=arg`        -f(gh=arg)
+//   * `-fgh arg`        -f() -g() -h(arg)
+//   * `-fgh arg`        -f(g) -h(arg)
+//   * `-fgh opd`        -f() -g() -h()
 //
 // Each of these can occur:
 //
@@ -42,7 +53,7 @@ const (
 	AMFlagBit            = 0b00000001 // The argument is a flag (starts with one or two hyphens)
 	AMLongBit            = 0b00000010 // The argument is a long flag (starts with two hyphens)
 	AMClusterBit         = 0b00000100 // The argument is a cluster of short flags
-	AMParamBit           = 0b00001000 // The argument has a parameter (--flag=param)
+	AMParamBit           = 0b00001000 // The argument has an attached parameter (--flag=param)
 	AMHyphenBit          = 0b00010000 // The argument is just hyphens ("-" or "--")
 )
 
@@ -66,7 +77,7 @@ func (am *ArgMask) TstClusterBit() bool { return *am&AMClusterBit != 0 }
 func (am *ArgMask) TstParamBit() bool   { return *am&AMParamBit != 0 }
 func (am *ArgMask) TstHyphenBit() bool  { return *am&AMHyphenBit != 0 }
 
-// Tests is a flag mask represents any kind of flag
+// Tests if an argument mask represents any kind of flag
 func (am *ArgMask) IsFlag() bool {
 	if am.TstFlagBit() {
 		// Sanity check: if it's a flag, it can't be just hyphens, but
@@ -79,7 +90,12 @@ func (am *ArgMask) IsFlag() bool {
 	return false
 }
 
-// Tests if a flag mask represents a single short flag
+// Tests if an argument mask represents a double-hyphen
+func (am *ArgMask) IsDoubleHyphen() bool {
+	return am.TstHyphenBit() && am.TstLongBit()
+}
+
+// Tests if an argument mask represents a single short flag
 func (am *ArgMask) IsShortFlag() bool {
 	if am.IsFlag() && !am.TstLongBit() {
 		// No additional sanity-check to do here
@@ -219,6 +235,16 @@ func parseSingleArg(arg string) (flags []string, param string, argType ArgMask) 
 	return
 }
 
+// Function StopParsing moves all remaining input arguments to the
+// output slice, optionally discarding the first element of the input
+func (fs *FlagSet) StopParsing(shift bool) {
+	if shift {
+		_, _ = fs.InputArgs.Shift()
+	}
+	fs.OutputArgs.Append([]string(*fs.InputArgs)...)
+	fs.InputArgs.Clear()
+}
+
 func (fs *FlagSet) parse() error {
 	var err error
 	var i int = 0
@@ -228,26 +254,39 @@ NEXTARG:
 		flags, param, argType := parseSingleArg(arg)
 		if !argType.IsFlag() {
 			fs.OutputArgs.Push(param)
+			if PosixOperandStop {
+				fs.StopParsing(false)
+				return nil
+			}
 			continue NEXTARG
+		}
+		if argType.IsDoubleHyphen() {
+			// arg can't be an option-argument at this point, so we
+			// terminate processing under either POSIX or GNU rules
+			fs.StopParsing(false)
+			return nil
 		}
 		var flag *Flag = nil
 		if argType.IsCluster() {
+			// Process clusters by POSIX rules where the last flag in
+			// the cluster can have an option-argument
 			for _, s := range flags[:len(flags)-1] {
 				flag = fs.Lookup(s)
 				if flag == nil {
-					fs.Failf("short flag '%s' in cluster '%s' is not defined", s, arg)
+					fs.Failf("short flag '-%s' in cluster '%s' is not defined", s, arg)
 					continue
 				}
 				err = flag.Set(nil, i)
 				if err != nil {
-					fs.Failf("failed to set short flag '%s' in cluster '%s'", s, arg)
+					fs.Failf("failed to set flag '%s' from cluster '%s': %v", flag, arg, err)
 					continue
 				}
 				continue NEXTARG
 			}
-			flag = fs.Lookup(flags[len(flags)-1])
+			last := flags[len(flags)-1]
+			flag = fs.Lookup(last)
 			if flag == nil {
-				fs.Failf("shortcut '%s' not defined in cluster '%s'", flags[len(flags)-1], arg)
+				fs.Failf("short flag '-%s' not defined in cluster '%s'", last, arg)
 				continue
 			}
 		} else {
@@ -260,7 +299,7 @@ NEXTARG:
 		if argType.HasParam() {
 			err = flag.Set(param, i)
 			if err != nil {
-				fs.Failf("failed to set flag `%s` with '%s'", flag.String(), param)
+				fs.Failf("failed to set flag `%s` with '%s': %v", flag.String(), param, err)
 			}
 			continue NEXTARG
 		}
@@ -270,17 +309,28 @@ NEXTARG:
 			// End of InputArgs
 			err = flag.Set(nil, i)
 			if err != nil {
-				fs.Failf("failed to set flag `%s` at EOL with no parameter", flag.String())
+				fs.Failf("failed to set flag `%s` at EOL with no parameter: %v", flag.String(), err)
 			}
-			continue NEXTARG
+			// At EOL
+			return nil
 		}
 		// Have next arg, might be a parameter
 		flags, param, nextArgType := parseSingleArg(next)
 		if !nextArgType.IsFlag() {
+			if nextArgType.IsDoubleHyphen() {
+				// Under POSIX rules, we don't terminate if the
+				// double-hyphen is an option-argument
+				if !PosixDoubleHyphen {
+					fs.StopParsing(true)
+					return nil
+				}
+			}
 			// Not a flag, try it as a parameter
 			err = flag.Set(param, i)
-			if err != nil {
-				fs.Failf("failed to set flag `%s` with '%s'", flag.String(), param)
+			if err == nil {
+				// It worked as a parameter, so consume it
+				_, _ = fs.InputArgs.Shift()
+				i++
 			}
 			continue NEXTARG
 		}
@@ -290,10 +340,7 @@ NEXTARG:
 			fs.Failf("failed to set flag `%s` with no parameter", flag.String())
 		}
 	}
-	if err != nil {
-		return err
-	}
-	return nil
+	return err
 }
 
 func (fs *FlagSet) Parse(arguments []string) error {
