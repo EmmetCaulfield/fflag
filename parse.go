@@ -335,7 +335,7 @@ func (fs *FlagSet) parse() error {
 			// rules and it we don't have to check if the flag takes
 			// an argument: if it fails, there's a mistake on the
 			// command-line.
-			if argType.IsShortFlag() && PosixEquals {
+			if (argType.IsShortFlag() || argType.IsCluster()) && PosixEquals {
 				err = flag.Set("="+param, i)
 			} else {
 				err = flag.Set(param, i)

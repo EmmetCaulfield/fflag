@@ -96,12 +96,39 @@ func TestCluster(u *testing.T) {
 	fs.Var(&s, 's', "snake", "no legs")
 
 	args := []string{"-abs", "python"}
-
 	expected := args[1]
 	fs.Parse(args)
 	assert.Equal(t, true, a)
 	assert.Equal(t, true, b)
 	assert.Equal(t, false, c)
-	assert.Equal(t, expected, s)
-}
+	assert.Equal(t, expected, s, "with detached argument")
 
+	fs.Reset(); a=false; b=false
+	args = []string{"-abspython"}
+	expected = "python"
+	fs.Parse(args)
+	assert.Equal(t, true, a)
+	assert.Equal(t, true, b)
+	assert.Equal(t, false, c)
+	assert.Equal(t, expected, s, "with attached argument")
+
+	fs.Reset(); a=false; b=false
+	args = []string{"-abs=python"}
+	PosixEquals = true
+	expected = "=python"
+	fs.Parse(args)
+	assert.Equal(t, true, a)
+	assert.Equal(t, true, b)
+	assert.Equal(t, false, c)
+	assert.Equal(t, expected, s, "with equals attached argument, POSIX mode")
+
+	fs.Reset(); a=false; b=false
+	args = []string{"-abs=python"}
+	PosixEquals = false
+	expected = "python"
+	fs.Parse(args)
+	assert.Equal(t, true, a)
+	assert.Equal(t, true, b)
+	assert.Equal(t, false, c)
+	assert.Equal(t, expected, s, "with equals attached argument, GNU mode")
+}
