@@ -251,15 +251,14 @@ func parseSingleArg(arg string) (flags []string, param string, argType ArgMask) 
 func (fs *FlagSet) disambiguateCluster(flags []string, param string, pos int) *Flag {
 	// Process clusters by POSIX rules where the last flag in
 	// the cluster can have an option-argument.
-	var optarg string
-	var prev, curr *Flag
+	var curr *Flag
 	for i, s := range flags {
-		prev = curr
+		prev := curr
 		curr = fs.Lookup(s)
 		if curr == nil {
 			// Non-flag: this and whatever follows must be an attached
 			// option-argument to the previous flag
-			optarg = strings.Join(flags[i:], "")
+			optarg := strings.Join(flags[i:], "")
 			if param != "" {
 				optarg += "=" + param
 			}
@@ -270,21 +269,17 @@ func (fs *FlagSet) disambiguateCluster(flags []string, param string, pos int) *F
 			}
 			return nil
 		}
-		// curr is a *Flag
-		err := prev.Set(nil, pos)
-		if err != nil {
-			fs.Failf("failed to set '%s' with nil: %v", prev, err)
-			continue
+		if prev != nil {
+			err := prev.Set(nil, pos)
+			if err != nil {
+				fs.Failf("failed to set '%s' with nil: %v", prev, err)
+			}
 		}
 	}
-	// We now have the last flag in `curr` that hasn't been acted on
-	last := fs.Lookup(flags[len(flags)-1])
-	if last == nil {
-		fs.Failf("short flag '-%s' not defined in cluster '%s'", flags[len(flags)-1], strings.Join(flags, ""))
-	}
-	// We return the last flag without acting on it in case there's an
-	// unattached option-argument (aka parameter)
-	return last
+	// We now have the last flag in `curr` that hasn't been acted on:
+	// return it in case there's an unattached option-argument (aka
+	// parameter) in the next argument
+	return curr
 }
 
 // Function StopParsing moves all remaining input arguments to the

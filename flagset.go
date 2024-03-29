@@ -347,16 +347,16 @@ func (fs *FlagSet) AlignedFlagDescriptions(pre, mid, post string) []string {
 // Function Reset clears the input & output args and the mutexes while
 // keeping the flag setup
 func (fs *FlagSet) Reset() {
-	fmt.Fprintf(os.Stderr, "FlagSet has %d groups and %d mutexes\n", len(fs.Groups), len(fs.Mutex))
+	// fmt.Fprintf(os.Stderr, "FlagSet has %d groups and %d mutexes\n", len(fs.Groups), len(fs.Mutex))
 	fs.InputArgs.Clear()
 	fs.OutputArgs.Clear()
 	for name, _ := range fs.Mutex {
 		fs.Mutex[name] = nil
 	}
 	for _, g := range fs.Groups {
-		fmt.Fprintf(os.Stderr, "Visiting group '%s' with %d flags\n", g.Title, len(g.FlagList))
+		// fmt.Fprintf(os.Stderr, "Visiting group '%s' with %d flags\n", g.Title, len(g.FlagList))
 		for _, f := range g.FlagList {
-			fmt.Fprintf(os.Stderr, "Clearing flag '%s'\n", f)
+			// fmt.Fprintf(os.Stderr, "Clearing flag '%s'\n", f)
 			f.Count = 0
 		}
 	}
