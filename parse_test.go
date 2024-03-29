@@ -85,6 +85,42 @@ func TestPosixEquals(u *testing.T) {
 	assert.Equal(t, expected, s, "GNU rule")
 }
 	
+func TestPosixOperandStop(u *testing.T) {
+	t := assert.TestingT(u)
+	var a, b, c bool
+	var s string
+	fs := NewFlagSet()
+
+	fs.Var(&a, 'a', "ant", "six legs")
+	fs.Var(&b, 'b', "bat", "two legs, two wings")
+	fs.Var(&c, 'c', "cow", "four legs")
+	fs.Var(&s, 's', "snake", "no legs")
+
+	args := []string{"-b", "-c", "operand", "-a", "-s", "python"}
+
+	// Under GNU rules, 'a' is true, 's' is "python", and "operand" is in the output
+	expected := &deque.Deque[string]{}
+	expected.Init("operand")
+	PosixOperandStop = false
+	fs.Parse(args)
+	assert.Equal(t, true, a)
+	assert.Equal(t, true, b)
+	assert.Equal(t, true, c)
+	assert.Equal(t, "python", s)
+	assert.Equal(t, expected, fs.OutputArgs, "GNU operand stop")
+
+	fs.Reset(); a=false; b=false; c=false; s=""
+	// Under POSIX rules, 'a' is false, 's' is "", and "operand", "-a", "-s", "python" is in the output
+	expected.Append("-a", "-s", "python")
+	PosixOperandStop = true
+	fs.Parse(args)
+	assert.Equal(t, false, a)
+	assert.Equal(t, true, b)
+	assert.Equal(t, true, c)
+	assert.Equal(t, "", s)
+	assert.Equal(t, expected, fs.OutputArgs, "POSIX operand stop")
+}
+
 func TestCluster(u *testing.T) {
 	t := assert.TestingT(u)
 	var a, b, c bool
@@ -131,4 +167,26 @@ func TestCluster(u *testing.T) {
 	assert.Equal(t, true, b)
 	assert.Equal(t, false, c)
 	assert.Equal(t, expected, s, "with equals attached argument, GNU mode")
+}
+
+func TestCluster2(u *testing.T) {
+	t := assert.TestingT(u)
+	var a, b, c bool
+	var s string
+	fs := NewFlagSet()
+	fs.Var(&a, 'a', "ant", "six legs")
+	fs.Var(&b, 'b', "bat", "two legs, two wings")
+	fs.Var(&c, 'c', "cow", "four legs")
+	fs.Var(&s, 's', "snake", "no legs")
+
+	args := []string{"-ac", "operand"}
+	expected := &deque.Deque[string]{}
+	expected.Init("operand")
+	fs.Parse(args)
+
+	assert.Equal(t, true, a)
+	assert.Equal(t, false, b)
+	assert.Equal(t, true, c)
+	assert.Equal(t, "", s)
+	assert.Equal(t, expected, fs.OutputArgs, "GNU rule")
 }
