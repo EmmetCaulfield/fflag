@@ -549,7 +549,9 @@ func (f *Flag) testOrSet(value interface{}, argPos int, doSet bool) error {
 		return nil
 	}
 
-	f.Count++
+	if doSet {
+		f.Count++
+	}
 	if f.IsCounter() {
 		// TODO(emmet): think about this. It might be useful to be
 		// able to stick the count into a string and it would work

@@ -337,7 +337,9 @@ func (fs *FlagSet) parse() error {
 		if argType.HasParam() {
 			// This must've been attached with an '=', so if it's a
 			// short flag, the '=' is part of the argument under POSIX
-			// rules
+			// rules and it we don't have to check if the flag takes
+			// an argument: if it fails, there's a mistake on the
+			// command-line.
 			if argType.IsShortFlag() && PosixEquals {
 				err = flag.Set("="+param, i)
 			} else {
@@ -364,21 +366,38 @@ func (fs *FlagSet) parse() error {
 		flags, param, nextArgType := parseSingleArg(next)
 		if !nextArgType.IsFlag() {
 			if nextArgType.IsDoubleHyphen() {
-				// Under POSIX rules, we don't terminate if the
-				// double-hyphen is an option-argument
+				// Under GNU (not POSIX) rules, we terminate if the
+				// double-hyphen appears anywhere:
 				if !PosixDoubleHyphen {
 					fs.stopParsing(true)
 					return nil
 				}
-			}
-			// Not a flag, try it as a parameter
-			err = flag.Set(param, i)
-			if err == nil {
-				// It worked as a parameter, so consume it
+				// See if the flag will accept "--" as an argument:
+				err = flag.Test("--", i)
+				if err != nil {
+					// flag wouldn't eat it, so not an option-argument
+					fs.stopParsing(true)
+					return nil
+				}
+				err = flag.Set("--", i)
+				if err != nil {
+					fs.Failf("failed to set flag `%s` with `--` after Test(): %v", flag, err)
+				}
+				// It worked as a parameter/optarg, so consume it
 				_, _ = fs.InputArgs.Shift()
 				i++
+				continue
 			}
-			continue
+			// Not a flag, try it as a parameter
+			if !flag.IsBool() {
+				err = flag.Set(param, i)
+				if err == nil {
+					// It worked as a parameter, so consume it
+					_, _ = fs.InputArgs.Shift()
+					i++
+				}
+				continue
+			}
 		}
 		// Next arg is a flag, current flag has no parameter
 		err = flag.Set(nil, i)
