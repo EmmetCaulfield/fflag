@@ -248,5 +248,14 @@ func TestWithDefault(t *testing.T) {
 
 func TestHyphenNumIdiomVar(t *testing.T) {
 	b := false
+	var s string
+	var u uint
 	assert.Panics(t, func() { Var(&b, NoShort, NoLong, "non-number, should panic") })
+	Var(&u, NoShort, NoLong, "unsigned, should not panic")
+	assert.Panics(t, func() { Var(&u, NoShort, NoLong, "not twice") })
+	assert.Panics(t, func() { Var(&s, '7', "seven", "no numeric shorts with -NUM defined") })
+
+	fs := NewFlagSet()
+	fs.Var(&s, '7', "seven", "numeric shorts allowed")
+	assert.Panics(t, func() { fs.Var(&u, NoShort, NoLong, "now ambiguous") })
 }

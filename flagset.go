@@ -258,11 +258,11 @@ func (fs *FlagSet) Var(value interface{}, short rune, long string, usage string,
 	options := append([]FlagOption{WithParent(fs)}, opts...)
 	f := NewFlag(value, short, long, usage, options...)
 	if f == nil {
-		log.Panicf("Failed to create new flag %s", long)
+		log.Panicf("failed to create new flag -%c/--%s", short, long)
 	}
 	err := fs.AddFlag(f)
 	if err != nil {
-		log.Panicf("Failed to add new flag %s, %#v: %v", long, f, err)
+		log.Panicf("failed to add new flag '%s': %v", f, err)
 	}
 }
 
