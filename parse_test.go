@@ -190,3 +190,25 @@ func TestCluster2(u *testing.T) {
 	assert.Equal(t, "", s)
 	assert.Equal(t, expected, fs.OutputArgs, "GNU rule")
 }
+
+func TestHyphenNumIdiom(u *testing.T) {
+	t := assert.TestingT(u)
+	var n uint
+	fs := NewFlagSet()
+	fs.Var(&n, NoShort, NoLong, "a natural number")
+
+	// Looks like a flag
+	args := []string{"-7"}
+	fs.Parse(args)
+	assert.Equal(t, uint(7), n)
+
+	// Looks like a cluster
+	fs.Reset()
+	args = []string{"-371"}
+	fs.Parse(args)
+	assert.Equal(t, uint(371), n)
+}
+
+// How should `-42a5` be interpreted? <-42, a(5)>? -4(2a5)? -(0x42a5)
+// Should -NUM handle non-decimal NUM (e.g. octal, hex)?
+// Rule: if you use the -NUM idiom, you can't define numeric short flags?

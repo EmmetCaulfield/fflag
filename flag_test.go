@@ -246,7 +246,7 @@ func TestWithDefault(t *testing.T) {
 	assert.Equal(t, true, b)
 }
 
-func TestHyphenNumIdiom(t *testing.T) {
+func TestHyphenNumIdiomVar(t *testing.T) {
 	b := false
-	assert.Panics(t, func() { Var(&b, NoShort, NoLong, "should panic") })
+	assert.Panics(t, func() { Var(&b, NoShort, NoLong, "non-number, should panic") })
 }

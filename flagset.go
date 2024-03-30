@@ -1,11 +1,13 @@
 package fflag
 
-import(
+import (
 	"fmt"
 	"io"
+	"log"
 	"os"
 	"strings"
-	
+	"unicode"
+
 	"github.com/EmmetCaulfield/fflag/pkg/deque"
 )
 
@@ -55,6 +57,7 @@ type FlagSet struct {
 	Output             io.Writer
 	IgnoreDoubleDash   bool
 	HasHyphenNumIdiom  bool
+	HasNumberShorts    bool
 	InputArgs         *deque.Deque[string]
 	OutputArgs        *deque.Deque[string]
 	OnFail             FailOption
@@ -225,10 +228,25 @@ func (fs *FlagSet) AddFlag(f *Flag) error {
 	if g, ok := fs.ShortDict[f.Short]; f.Short != NoShort && ok {
 		return fmt.Errorf("shortcut '%c' already used for '%s'", f.Short, g.Long)
 	}
+	if unicode.IsNumber(f.Short) {
+		if fs.HasHyphenNumIdiom {
+			return fmt.Errorf("cannot have '-%c' with -NUM idiom defined", f.Short)
+		}
+		fs.HasNumberShorts = true
+	}
 	if f.Short != NoShort || f.Long == NoLong {
 		fs.ShortDict[f.Short] = f
 	}
-
+	if f.Short == NoShort && f.Long == NoLong {
+		// -NUM idiom
+		if fs.HasHyphenNumIdiom {
+			return fmt.Errorf("cannot use -NUM idiom twice")
+		}
+		if fs.HasNumberShorts {
+			return fmt.Errorf("cannot use -NUM idiom if digits are used as flags")
+		}
+		fs.HasHyphenNumIdiom = true
+	}
 	fs.Group().FlagList = append(fs.Group().FlagList, f)
 	return nil
 }
@@ -240,11 +258,11 @@ func (fs *FlagSet) Var(value interface{}, short rune, long string, usage string,
 	options := append([]FlagOption{WithParent(fs)}, opts...)
 	f := NewFlag(value, short, long, usage, options...)
 	if f == nil {
-		fs.Failf("Failed to create new flag %s", long)
+		log.Panicf("Failed to create new flag %s", long)
 	}
 	err := fs.AddFlag(f)
 	if err != nil {
-		fs.Failf("Failed to add new flag %s, %#v: %v", long, f, err)
+		log.Panicf("Failed to add new flag %s, %#v: %v", long, f, err)
 	}
 }
 

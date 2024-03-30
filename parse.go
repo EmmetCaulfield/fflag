@@ -7,7 +7,9 @@ package fflag
 import (
 	"fmt"
 	"os"
+	"strconv"
 	"strings"
+	"unicode"
 )
 
 // A flag argument can be:
@@ -55,6 +57,7 @@ const (
 	AMClusterBit         = 0b00000100 // The argument is a cluster of short flags
 	AMParamBit           = 0b00001000 // The argument has an attached parameter (--flag=param)
 	AMHyphenBit          = 0b00010000 // The argument is just hyphens ("-" or "--")
+	AMNumberBit          = 0b00100000 // The argument is a number
 )
 
 func (am *ArgMask) String() string {
@@ -66,16 +69,19 @@ func (am *ArgMask) SetLongBit()         { *am = *am | AMLongBit }
 func (am *ArgMask) SetClusterBit()      { *am = *am | AMClusterBit }
 func (am *ArgMask) SetParamBit()        { *am = *am | AMParamBit }
 func (am *ArgMask) SetHyphenBit()       { *am = *am | AMHyphenBit }
+func (am *ArgMask) SetNumberBit()       { *am = *am | AMNumberBit }
 func (am *ArgMask) ClrFlagBit()         { *am = *am & ^AMFlagBit }
 func (am *ArgMask) ClrLongBit()         { *am = *am & ^AMLongBit }
 func (am *ArgMask) ClrClusterBit()      { *am = *am & ^AMClusterBit }
 func (am *ArgMask) ClrParamBit()        { *am = *am & ^AMParamBit }
 func (am *ArgMask) ClrHyphenBit()       { *am = *am & ^AMHyphenBit }
+func (am *ArgMask) ClrNumberBit()       { *am = *am & ^AMNumberBit }
 func (am *ArgMask) TstFlagBit() bool    { return *am&AMFlagBit != 0 }
 func (am *ArgMask) TstLongBit() bool    { return *am&AMLongBit != 0 }
 func (am *ArgMask) TstClusterBit() bool { return *am&AMClusterBit != 0 }
 func (am *ArgMask) TstParamBit() bool   { return *am&AMParamBit != 0 }
 func (am *ArgMask) TstHyphenBit() bool  { return *am&AMHyphenBit != 0 }
+func (am *ArgMask) TstNumberBit() bool  { return *am&AMNumberBit != 0 }
 
 // Tests if an argument mask represents any kind of flag
 func (am *ArgMask) IsFlag() bool {
@@ -130,6 +136,11 @@ func (am *ArgMask) IsCluster() bool {
 	return false
 }
 
+// Tests if a flag mask represents a flag that is itself a number
+func (am *ArgMask) IsNumber() bool {
+	return am.TstNumberBit()
+}
+
 func (am *ArgMask) HasParam() bool {
 	if am.TstParamBit() {
 		// If the param bit is set, it must be a flag and not just
@@ -161,7 +172,7 @@ func (am *ArgMask) IsNonFlag() bool {
 	return false
 }
 
-func parseSingleArg(arg string) (flags []string, param string, argType ArgMask) {
+func parseSingleArg(arg string) (flags string, param string, argType ArgMask) {
 	// minimum length flag is 2 (e.g. "-x")
 	if len(arg) < 2 {
 		// argType.ClrLongBit()
@@ -216,21 +227,33 @@ func parseSingleArg(arg string) (flags []string, param string, argType ArgMask) 
 
 	if argType.IsLongFlag() {
 		// We have a single long flag
-		flags = []string{flag}
+		flags = flag
 		return
 	}
 
-	// It could be a single short flag or a cluster of short flags
+	// It could be a single short flag, a cluster of short flags, or a
+	// number (the -NUM idiom)
 	argType.ClrLongBit()
-	if len(flag) == 1 {
-		// We have a single short flag
-		flags = []string{flag}
+	r, tail := FirstRune(flag)
+	if tail == "" {
+		if unicode.IsNumber(r) {
+			argType.SetNumberBit()
+		}
+		flags = string(r)
 		return
 	}
 
-	// We have a cluster of short flags
+	// We have a cluster of short flags or a number
+	if param == "" {
+		// If there's an attached parameter, it can't be the -NUM
+		// idiom
+		_, err := strconv.ParseUint(flag, 10, 64)
+		if err == nil {
+			argType.SetNumberBit()
+		}
+	}
 	argType.SetClusterBit()
-	flags = strings.Split(flag, "")
+	flags = flag
 
 	return
 }
@@ -248,7 +271,7 @@ func parseSingleArg(arg string) (flags []string, param string, argType ArgMask) 
 // We work from left-to-right, giving precedence to interpretation as
 // a flag. Once a non-flag is encountered, the rest of the string is
 // assumed to be an option-argument to the last flag.
-func (fs *FlagSet) disambiguateCluster(flags []string, param string, pos int) *Flag {
+func (fs *FlagSet) disambiguateCluster(flags string, param string, argType ArgMask, pos int) *Flag {
 	// Process clusters by POSIX rules where the last flag in
 	// the cluster can have an option-argument.
 	var curr *Flag
@@ -256,9 +279,20 @@ func (fs *FlagSet) disambiguateCluster(flags []string, param string, pos int) *F
 		prev := curr
 		curr = fs.Lookup(s)
 		if curr == nil {
+			// Could be a number:
+			if argType.IsNumber() && param == "" {
+				curr = fs.Lookup(NoShort)
+				if curr != nil {
+					err := curr.Set(flags, pos)
+					if err != nil {
+						fs.Failf("failed to set '%s' with '%s' (-NUM idiom): %v", curr, flags, err)
+					}
+					return nil
+				}
+			}
 			// Non-flag: this and whatever follows must be an attached
 			// option-argument to the previous flag
-			optarg := strings.Join(flags[i:], "")
+			optarg := flags[i:]
 			if param != "" {
 				optarg += "=" + param
 			}
@@ -317,15 +351,27 @@ func (fs *FlagSet) parse() error {
 		if argType.IsCluster() {
 			// It's parsed as a cluster, but that doesn't mean it
 			// is. It could be a flag with an attached argument.
-			flag = fs.disambiguateCluster(flags, param, i)
+			flag = fs.disambiguateCluster(flags, param, argType, i)
 			if flag == nil {
 				// Fully handled in fs.disambiguateCluster()
 				continue
 			}
 		} else {
-			flag = fs.Lookup(flags[0])
+			flag = fs.Lookup(flags)
 			if flag == nil {
-				fs.Failf("flag '%s' not defined", flags[0])
+				if !argType.IsNumber() {
+					fs.Failf("flag '%s' not defined (NaN)", flags)
+					continue
+				}
+				flag = fs.Lookup(NoShort)
+				if flag == nil {
+					fs.Failf("flag '-NUM' not defined for '%s'", flags)
+					continue
+				}
+				err = flag.Set(flags, i)
+				if err != nil {
+					fs.Failf("failed to set -NUM flag with '%s': %v", flags, err)
+				}
 				continue
 			}
 		}
