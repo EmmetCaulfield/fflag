@@ -68,4 +68,13 @@ func TestTrieBasics(t *testing.T) {
 			t.Errorf("got wrong value: expected 'QUUX', got '%s'", *n)
 		}
 	}
+
+	// Duplicate keys (should fail):
+	for _, s := range []string{"foo", "fop", "bar", "baz", "quux"} {
+		value := "DUPE-" + s
+		err := trie.Add(s, &value)
+		if err == nil {
+			t.Errorf("unexpected success adding duplicate key '%s'", s)
+		}
+	}
 }
