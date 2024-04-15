@@ -1,13 +1,14 @@
 package trie
 
 import (
+	//	"fmt"
 	"strings"
 	"testing"
 )
 
 func TestTrieBasics(t *testing.T) {
 	trie := NewTrie[string]()
-	contents := []string{"foo", "bar", "baz", "bazaar", "fop", "quux"}
+	contents := []string{"foo", "bar", "bazaar", "baz", "fop", "quux"}
 
 	for _, s := range contents {
 		v := strings.ToUpper(s)
@@ -15,6 +16,8 @@ func TestTrieBasics(t *testing.T) {
 		if err != nil {
 			t.Errorf("error: %v", err)
 		}
+		// fmt.Println("----------------------------------")
+		// trie.Dump("")
 	}
 
 	// Exact keys (should succeed):

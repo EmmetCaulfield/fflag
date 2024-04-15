@@ -47,6 +47,19 @@ func (t *TrieNode[T]) Get(key string) (*T, error) {
 	return nil, nil
 }
 	
+func (t *TrieNode[T]) moveDown(item *T) {
+	tR, tTail := firstRune(t.Tail)
+	if tR == utf8.RuneError {
+		panic("unexpected string error")
+	}
+	t.Nodes[tR] = &TrieNode[T]{
+		Item: t.Item,
+		Tail: tTail,
+		Nodes: map[rune]*TrieNode[T]{},
+	}
+	t.Item = item
+	t.Tail = ""
+}
 
 func (t *TrieNode[T]) Add(key string, item *T) error {
 	if len(key) == 0 {
@@ -55,7 +68,13 @@ func (t *TrieNode[T]) Add(key string, item *T) error {
 			t.Item = item
 			return nil
 		}
-		return fmt.Errorf("duplicate key in trie")
+		// We have a duplicate or longer key already:
+		if len(t.Tail) == 0 {
+			return fmt.Errorf("duplicate key in trie")
+		}
+		// Move the longer key down and put the short key here:
+		t.moveDown(item)
+		return nil
 	}
 	if len(t.Nodes) == 0 && len(t.Tail) == 0 && t.Item == nil {
 		t.Tail = key
@@ -64,17 +83,7 @@ func (t *TrieNode[T]) Add(key string, item *T) error {
 	}
 	// If there's a tail here, we need to move it down:
 	if len(t.Tail) > 0 {
-		tR, tTail := firstRune(t.Tail)
-		if tR == utf8.RuneError {
-			panic("unexpected string error")
-		}
-		t.Nodes[tR] = &TrieNode[T]{
-			Item: t.Item,
-			Tail: tTail,
-			Nodes: map[rune]*TrieNode[T]{},
-		}
-		t.Item = nil
-		t.Tail = ""
+		t.moveDown(nil)
 	}
 
 	r, tail := firstRune(key)
