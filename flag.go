@@ -924,13 +924,17 @@ func WithAlias(short rune, long string, obsolete bool) FlagOption {
 	return func(f *Flag) error {
 		var flag *Flag = nil
 		fs := f.ParentFlagSet()
-		flag = fs.LookupLong(long)
-		if flag != nil {
-			log.Panicf("long flag '%s' already exists for alias '%s'", flag, long)
+		if long != NoLong {
+			flag = fs.LookupLong(long)
+			if flag != nil {
+				log.Panicf("long flag '%s' already exists for alias '%s'", flag, long)
+			}
 		}
-		flag = fs.LookupShort(short)
-		if flag != nil {
-			log.Panicf("short flag '%s' already exists for alias '%c'", flag, short)
+		if short != NoShort {
+			flag = fs.LookupShort(short)
+			if flag != nil {
+				log.Panicf("short flag '%s' already exists for alias '%c'", flag, short)
+			}
 		}
 		flag = f.NewAlias(short, long)
 		if flag == nil {
