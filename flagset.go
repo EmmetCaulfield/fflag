@@ -9,6 +9,7 @@ import (
 	"unicode"
 
 	"github.com/EmmetCaulfield/fflag/pkg/deque"
+	"github.com/EmmetCaulfield/fflag/pkg/trie"
 )
 
 // What to do on error. The default is the zero value: (not silent,
@@ -52,7 +53,7 @@ func NewFlagGroup(title string) *FlagGroup {
 type FlagSet struct {
 	Groups             []*FlagGroup
 	GroupIndex         int
-	LongDict           map[string]*Flag
+	LongTrie          *trie.TrieNode[Flag]
 	ShortDict          map[rune]*Flag
 	Output             io.Writer
 	IgnoreDoubleDash   bool
@@ -102,7 +103,7 @@ func NewFlagSet(opts ...FlagSetOption) *FlagSet {
 			NewFlagGroup("Options"),
 		},
 		GroupIndex:       0,
-		LongDict:         map[string]*Flag{},
+		LongTrie:         trie.NewTrie[Flag](),
 		ShortDict:        map[rune]*Flag{},
 		Output:           os.Stderr,
 		IgnoreDoubleDash: false,
@@ -167,19 +168,22 @@ func (fs *FlagSet) HasFlags() bool {
 }
 
 func (fs *FlagSet) LookupLong(long string) *Flag {
-	if len(long) == 0 {
-		if fs.HasHyphenNumIdiom {
-			return fs.LongDict[""]
+	// For single-rune longs, give priority to shorts, otherwise we
+	// can have the situation where -x and --x are different (by way
+	// of shortest unique prefix being valid for long options).
+	r, tail := FirstRune(long)
+	if len(tail) == 0 {
+		f := fs.LookupShort(r)
+		if f != nil {
+			return f
 		}
+	}
+
+	f, err := fs.LongTrie.Get(long)
+	if err != nil {
 		return nil
 	}
-	if len(long) == 1 {
-		return fs.LookupShort(rune(long[0]))
-	}
-	if f, ok := fs.LongDict[long]; ok {
-		return f
-	}
-	return nil
+	return f
 }
 
 // LookupShort returns the Flag structure of the shortcut flag,
@@ -207,8 +211,8 @@ func (fs *FlagSet) Lookup(item interface{}) *Flag {
 	return nil
 }
 
-func Lookup(long string) *Flag {
-	return CommandLine.Lookup(long)
+func Lookup(item interface{}) *Flag {
+	return CommandLine.Lookup(item)
 }
 
 func (fs *FlagSet) AddFlag(f *Flag) error {
@@ -218,11 +222,11 @@ func (fs *FlagSet) AddFlag(f *Flag) error {
 	if !IsValidPair(f.Short, f.Long) {
 		return fmt.Errorf("flag '%s' has invalid short/long flags", f)
 	}
-	if g, ok := fs.LongDict[f.Long]; f.Long != NoLong && ok {
-		return fmt.Errorf("long flag '%s' already used for '%s'", f.Long, g)
-	}
-	if f.Long != NoLong || f.Short == NoShort {
-		fs.LongDict[f.Long] = f
+	if f.Long != NoLong {
+		err := fs.LongTrie.Add(f.Long, f)
+		if err != nil {
+			return fmt.Errorf("error adding long flag '%s': %w", f.Long, err)
+		}
 	} 
 
 	if g, ok := fs.ShortDict[f.Short]; f.Short != NoShort && ok {
@@ -290,7 +294,7 @@ func Equ(short rune, long string, equiv string, value string) {
 func (fs *FlagSet) Dump() {
 	fmt.Fprintf(fs.Output, "Groups: %+v\n", fs.Groups)
 	fmt.Fprintf(fs.Output, "GroupIndex: %+v\n", fs.GroupIndex)
-	fmt.Fprintf(fs.Output, "LongDict: %+v\n", fs.LongDict)
+	fmt.Fprintf(fs.Output, "LongTrie: %+v\n", fs.LongTrie)
 	fmt.Fprintf(fs.Output, "ShortDict: %+v\n", fs.ShortDict)
 	fmt.Fprintf(fs.Output, "Output: %+v\n", fs.Output)
 	fmt.Fprintf(fs.Output, "IgnoreDoubleDash: %+v\n", fs.IgnoreDoubleDash)

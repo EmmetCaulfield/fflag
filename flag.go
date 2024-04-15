@@ -909,6 +909,9 @@ func withValue(value string) AliasOption {
 
 func WithListSeparator(sep rune) FlagOption {
 	return func(f *Flag) error {
+		if f.IsHyphenNum() {
+			log.Panicf("hyphen-num idiom cannot have a list sepearator")
+		}
 		if !types.IsSlice(f.Value) {
 			log.Panicf("cannot set separator for non-list value %s", f)
 		}
@@ -994,6 +997,9 @@ func WithOptionalDefault(def interface{}) FlagOption {
 
 func WithRepeats(ignore bool) FlagOption {
 	return func(f *Flag) error {
+		if f.IsHyphenNum() {
+			log.Panicf("hyphen-num idiom cannot be repeated")
+		}
 		if f.HasCallback() {
 			log.Panicf("WithRepeats() is redundant if WithCallback() is used (%s)", f)
 		}
@@ -1017,6 +1023,9 @@ func WithRepeats(ignore bool) FlagOption {
 
 func AsCounter() FlagOption {
 	return func(f *Flag) error {
+		if f.IsHyphenNum() {
+			log.Panicf("hyphen-num idiom cannot be a counter")
+		}
 		if f.HasCallback() {
 			log.Panicf("cannot use flag '%s' with callback as counter", f)
 		}
@@ -1077,6 +1086,9 @@ func WithCallback(callback CallbackFunction) FlagOption {
 // alias:
 func ReadFile() FlagOption {
 	return func(f *Flag) error {
+		if f.IsHyphenNum() {
+			log.Panicf("hyphen-num idiom cannot be a file reader")
+		}
 		if f.IsCounter() {
 			log.Panicf("counter flag '%s' cannot be a file reader", f)
 		}
@@ -1226,6 +1238,9 @@ func (f *Flag) IsBool() bool {
 }
 func (f *Flag) IsNumber() bool {
 	return types.IsNum(f.Value)
+}
+func (f *Flag) IsHyphenNum() bool {
+	return f.Short == NoShort && f.Long == NoLong
 }
 func (f *Flag) HasCallback() bool {
 	return f.Callback != nil

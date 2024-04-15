@@ -63,7 +63,7 @@ func TestBasicSet(t *testing.T) {
 	}
 	f = NewFlag(&b, 0, "foo", "a boolean flag")
 	if f == nil {
-		t.Error("failed create boolean flag")
+		t.Error("failed to create a boolean flag")
 	}
 	err := f.Set(true, 0)
 	if err != nil || b != true {
@@ -258,4 +258,66 @@ func TestHyphenNumIdiomVar(t *testing.T) {
 	fs := NewFlagSet()
 	fs.Var(&s, '7', "seven", "numeric shorts allowed")
 	assert.Panics(t, func() { fs.Var(&u, NoShort, NoLong, "now ambiguous") })
+}
+
+func TestLongGet(t *testing.T) {
+	fs := NewFlagSet()
+	var a, b, c bool
+	fs.Var(&a, NoShort, "ant", "six legs")
+	fs.Var(&b, 'b', "bat", "two legs, two wings")
+	fs.Var(&c, 'k', "cat", "four legs")
+
+	f := fs.Lookup('a') // Should fail
+	if f != nil && f.Value == &a {
+		t.Error("unexpected success looking up rune('a')")
+	}
+	f = fs.Lookup("a") // Should succeed
+	if f == nil || f.Value != &a {
+		t.Error("error looking up string(\"a\")")
+	}
+
+	f = fs.Lookup('b') // Should succeed
+	if f == nil || f.Value != &b {
+		t.Error("error looking up rune('b')")
+	}
+	f = fs.Lookup("b") // Should succeed
+	if f == nil || f.Value != &b {
+		t.Error("error looking up string(\"b\")")
+	}
+	f = fs.Lookup("ba") // Should succeed
+	if f == nil || f.Value != &b {
+		t.Error("error looking up string(\"ba\")")
+	}
+	f = fs.Lookup("bat") // Should succeed
+	if f == nil || f.Value != &b {
+		t.Error("error looking up string(\"bat\")")
+	}
+	f = fs.Lookup("batx") // Should fail
+	if f != nil {
+		t.Error("unexpected success looking up string(\"batx\")")
+	}
+
+	f = fs.Lookup('c') // Should fail
+	if f != nil {
+		t.Error("unexpected success looking up rune('c')")
+	}
+	f = fs.Lookup('k') // Should succeed
+	if f == nil || f.Value != &c {
+		t.Error("failed looking up rune('k')")
+	}
+	f = fs.Lookup("k") // Should succeed
+	if f == nil || f.Value != &c {
+		t.Error("failed looking up string(\"k\")")
+	}
+	f = fs.Lookup("c") // Should succeed
+	if f == nil || f.Value != &c {
+		t.Error("error looking up string(\"ca\")")
+	}
+	// Priority to shorts in one-rune longs
+	var d bool
+	fs.Var(&d, 'c', "cow", "four legs, moos")
+	f = fs.Lookup("c") // Should succeed, but find `d`
+	if f == nil || f.Value != &d {
+		t.Error("error looking up string(\"c\")")
+	}
 }
