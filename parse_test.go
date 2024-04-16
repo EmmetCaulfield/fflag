@@ -212,3 +212,38 @@ func TestHyphenNumIdiom(u *testing.T) {
 // How should `-42a5` be interpreted? <-42, a(5)>? -4(2a5)? -(0x42a5)
 // Should -NUM handle non-decimal NUM (e.g. octal, hex)?
 // Rule: if you use the -NUM idiom, you can't define numeric short flags?
+
+func TestRepeats(u *testing.T) {
+	t := assert.TestingT(u)
+	fs := NewFlagSet()
+	sa := []string{}
+	fs.Var(&sa, 'a', "animal", "any living creature")
+	fs.Var(&sa, 'f', "file", "get animals from file", ReadFile())
+
+	args := []string{"-a", "ant", "-a", "bat", "-a", "cow"}
+	fs.Parse(args)
+	assert.Equal(t, []string{"ant", "bat", "cow"}, sa)
+
+	fs.Reset()
+	sa = sa[:0]
+	// test/animals.lst contains sheep//pig//horse
+	args = []string{"-a", "ant", "-f", "test/animals.lst", "-a", "cow"}
+	fs.Parse(args)
+	assert.Equal(t, []string{"ant", "sheep", "pig", "horse", "cow"}, sa)
+}
+
+// Callback Test Function
+func cbtf(f *Flag, arg string, pos int) error {
+	return f.SetOnly("foo", pos)
+}
+
+func TestCallback(u *testing.T) {
+	t := assert.TestingT(u)
+	fs := NewFlagSet()
+
+	s := ""
+	fs.Var(&s, 's', "string", "set a string", WithCallback(cbtf))
+	args := []string{"-s", "junk"}
+	fs.Parse(args)
+	assert.Equal(t, "foo", s)
+}

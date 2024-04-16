@@ -304,7 +304,7 @@ func (fe *FlagError) Error() string {
 	return fe.s
 }
 
-type CallbackFunction func(value interface{}, short rune, long string, arg string, pos int) error
+type CallbackFunction func(f *Flag, arg string, pos int) error
 
 type FlagType uint16
 
@@ -321,6 +321,7 @@ const (
 	IgnoreRepeatsBit  FlagType = 0b0000000100000000
 	FileBit           FlagType = 0b0000001000000000
 	DefOptionalBit    FlagType = 0b0000010000000000
+	SavedFileBit      FlagType = 0b0000100000000000
 )
 
 func (ft *FlagType) TstLongAliasBit() bool      { return *ft&LongAliasBit != 0 }
@@ -334,6 +335,7 @@ func (ft *FlagType) TstRepeatsBit() bool        { return *ft&RepeatsBit != 0 }
 func (ft *FlagType) TstIgnoreRepeatsBit() bool  { return *ft&IgnoreRepeatsBit != 0 }
 func (ft *FlagType) TstFileBit() bool           { return *ft&FileBit != 0 }
 func (ft *FlagType) TstDefOptionalBit() bool    { return *ft&DefOptionalBit != 0 }
+func (ft *FlagType) TstSavedFileBit() bool      { return *ft&SavedFileBit != 0 }
 func (ft *FlagType) TstAliasBits() bool         { return (*ft&ShortAliasBit)|(*ft&LongAliasBit) != 0 }
 
 func (ft *FlagType) ClrLongAliasBit()      { *ft = *ft & ^LongAliasBit }
@@ -347,6 +349,7 @@ func (ft *FlagType) ClrRepeatsBit()        { *ft = *ft & ^RepeatsBit }
 func (ft *FlagType) ClrIgnoreRepeatsBit()  { *ft = *ft & ^IgnoreRepeatsBit }
 func (ft *FlagType) ClrFileBit()           { *ft = *ft & ^FileBit }
 func (ft *FlagType) ClrDefOptionalBit()    { *ft = *ft & ^DefOptionalBit }
+func (ft *FlagType) ClrSavedFileBit()      { *ft = *ft & ^SavedFileBit }
 
 func (ft *FlagType) SetLongAliasBit()      { *ft = *ft | LongAliasBit }
 func (ft *FlagType) SetShortAliasBit()     { *ft = *ft | ShortAliasBit }
@@ -359,6 +362,7 @@ func (ft *FlagType) SetRepeatsBit()        { *ft = *ft | RepeatsBit }
 func (ft *FlagType) SetIgnoreRepeatsBit()  { *ft = *ft | IgnoreRepeatsBit }
 func (ft *FlagType) SetFileBit()           { *ft = *ft | FileBit }
 func (ft *FlagType) SetDefOptionalBit()    { *ft = *ft | DefOptionalBit }
+func (ft *FlagType) SetSavedFileBit()      { *ft = *ft | SavedFileBit }
 
 type Flag struct {
 	Value         interface{}
@@ -374,6 +378,7 @@ type Flag struct {
 	ListSeparator string
 	Mutexes       map[string]struct{}
 	parentFlagSet *FlagSet
+	savedCallback CallbackFunction
 }
 
 const IdSep string = "/"
@@ -502,6 +507,44 @@ func (f *Flag) MutexCollides() *Flag {
 	return nil
 }
 
+// Function `EnterCallback()` saves and alters some internal state of
+// a flag that would otherwise cause recursion in `fflag.Set()` if and
+// when it is called by a callback (`fflag.Set()` calls the
+// callback). It is intended to be called inside a callback before any
+// call to `Set()`. It does not need to be called if the callback does
+// not call `Set()` on the flag pointer.
+func (f *Flag) EnterCallback() {
+	if f.Callback == nil {
+		panic("cannot enter callback if there is no callback")
+	}
+	f.savedCallback = f.Callback
+	f.Callback = nil
+	if f.Type.TstFileBit() {
+		f.Type.SetSavedFileBit()
+	} else {
+		f.Type.ClrSavedFileBit()
+	}
+	f.Type.ClrFileBit()
+}
+
+// Function `ExitCallback()` restores the state of a flag that was
+// modified by `EnterCallback()` to prevent recursion in
+// `fflag.Set()`. It is intended to be called inside a callback after
+// the last call to `Set()`. It does not need to be called if the
+// callback does not call `Set()` on the flag pointer and
+// `EnterCallback()` has not been called.
+func (f *Flag) ExitCallback() {
+	if f.Callback != nil {
+		panic("cannot exit callback without prior call to EnterCallback()")
+	}
+	f.Callback = f.savedCallback
+	if f.Type.TstSavedFileBit() {
+		f.Type.SetFileBit()
+	} else {
+		f.Type.ClrFileBit()
+	}
+}
+
 func (f *Flag) Test(value interface{}, argPos int) error {
 	return f.testOrSet(value, argPos, false)
 }
@@ -541,14 +584,6 @@ func (f *Flag) testOrSet(value interface{}, argPos int, doSet bool) error {
 		log.Panic("double alias in Flag.Set(...)")
 	}
 
-	if f.HasCallback() {
-		v, _ := value.(string)
-		if doSet {
-			return f.Callback(f.Value, f.Short, f.Long, v, argPos)
-		}
-		return nil
-	}
-
 	if doSet {
 		f.Count++
 	}
@@ -563,9 +598,9 @@ func (f *Flag) testOrSet(value interface{}, argPos int, doSet bool) error {
 		//     panic("non-numeric value cannot be a counter")
 		// }
 		str := types.StrConv(f.Count)
-		err := types.FromStr(f.Value, str, doSet)
+		err := f.testOrSetOnly(str, argPos, doSet)
 		if err != nil && doSet {
-			f.Failf("failed to set counter '%s' from %d", f, f.Count)
+			f.Failf("failed to set counter '%s' from %d: %v", f, f.Count, err)
 		}
 		return err
 	}
@@ -587,12 +622,24 @@ func (f *Flag) testOrSet(value interface{}, argPos int, doSet bool) error {
 		}
 		defer file.Close()
 		scanner := bufio.NewScanner(file)
+		lineNo := 0
 		for scanner.Scan() {
+			lineNo++
 			line := scanner.Text()
-			err := types.FromStr(f.Value, line, doSet)
+			if f.HasCallback() {
+				if doSet {
+					err := f.Callback(f, line, lineNo)
+					if err != nil {
+						f.Failf("callback failed for '%s' in '%s': %v", line, f, err)
+						return err
+					}
+				}
+				continue
+			}
+			err := f.testOrSetOnly(line, lineNo, doSet)
 			if err != nil {
 				if doSet {
-					f.Failf("failed to convert '%s' to %T: %v", line, f.Value, err)
+					f.Failf("failed to set '%s' from line %d in '%s': %v", f, lineNo, filename, err)
 				}
 				return err
 			}
@@ -602,6 +649,14 @@ func (f *Flag) testOrSet(value interface{}, argPos int, doSet bool) error {
 				}
 				return err
 			}
+		}
+		return nil
+	}
+
+	if f.HasCallback() {
+		v, _ := value.(string)
+		if doSet {
+			return f.Callback(f, v, argPos)
 		}
 		return nil
 	}
@@ -646,11 +701,21 @@ func (f *Flag) testOrSet(value interface{}, argPos int, doSet bool) error {
 		}
 		return &FlagError{"value constrained by defaults"}
 	}
+	return f.testOrSetOnly(value, argPos, doSet)
+}
 
-	// TODO(emmet): look at doing this this other than by
-	// round-tripping via a string; OTOH, the value will always be a
-	// string from os.Argv anyway.
+func (f *Flag) TestOnly(value interface{}, argPos int) error {
+	return f.testOrSetOnly(value, argPos, false)
+}
 
+func (f *Flag) SetOnly(value interface{}, argPos int) error {
+	return f.testOrSetOnly(value, argPos, true)
+}
+
+// Function testOrSetOnly() sets `f.Value` to `value` if `doSet` is
+// `true`, otherwise it silently tests, insofar as possible, whether
+// the set would succeed or not.
+func (f *Flag) testOrSetOnly(value interface{}, argPos int, doSet bool) error {
 	// Convert the value to a string if it's not already one
 	var ok bool
 	var str string
@@ -974,12 +1039,12 @@ func (f *Flag) setupDefault(def interface{}, optional bool) error {
 		f.Type.SetDefOptionalBit()
 	}
 	// Really set the default value only if `optional` is `false`
-	// (i.e. we want `doSet` argument to FromStr() to be true)
+	// (i.e. we want `doSet` argument to testOrSetOnly() to be true)
 	f.Default = def
 	def = f.GetDefault()
-	err := types.FromStr(f.Value, types.StrConv(def), !optional)
+	err := f.testOrSetOnly(def, 0, !optional)
 	if err != nil {
-		log.Panicf("failed to set/test value to default (%v) for '%s'", f.Default, f)
+		log.Panicf("failed to set/test value to default (%v) for '%s': %v", f.Default, f, err)
 	}
 	return nil
 }
