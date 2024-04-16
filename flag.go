@@ -516,7 +516,7 @@ func (f *Flag) Set(value interface{}, argPos int) error {
 func (f *Flag) testOrSet(value interface{}, argPos int, doSet bool) error {
 	prev := f.MutexCollides()
 	if prev != nil {
-		f.Failf("flag '%s' collides with previously given flag '%s'", f, prev)
+		f.Failf("flag '%s' conflicts with previously given flag '%s'", f, prev)
 		return &FlagError{"mutex collision in Flag.Set()"}
 	}
 	// Prefer the SetValue interface if present:
@@ -648,8 +648,8 @@ func (f *Flag) testOrSet(value interface{}, argPos int, doSet bool) error {
 	}
 
 	// TODO(emmet): look at doing this this other than by
-	// round-tripping via a string; OTOH, the value will usually be a
-	// string anyway.
+	// round-tripping via a string; OTOH, the value will always be a
+	// string from os.Argv anyway.
 
 	// Convert the value to a string if it's not already one
 	var ok bool
