@@ -35,14 +35,18 @@ func (fb *FailOption) ClrPanicBit()    { *fb &= ^FailPanic }
 
 
 
-// CommandLine is the default FlagSet, named by analogy with `pflag`
+// `CommandLine` is the default `FlagSet`, named by analogy with
+// `pflag`'s variable with the same purpose.
 var CommandLine *FlagSet = NewFlagSet()
 
+// The `FlagGroup` provides a way of grouping help/usage text about
+// flags into groups with a title.
 type FlagGroup struct {
 	Title string
 	FlagList          []*Flag
 }
 
+// Creates a new `FlagGroup` given a title for the group.
 func NewFlagGroup(title string) *FlagGroup {
 	return &FlagGroup{
 		Title: title,
@@ -50,6 +54,11 @@ func NewFlagGroup(title string) *FlagGroup {
 	}
 }
 
+// A `FlagSet` is the top-level object containing all the flags and
+// mechanisms for looking up flags by short/long option string.
+//
+// In the most commonly expected use case, there will be one `FlagSet`
+// for a program, the default `CommandLine`.
 type FlagSet struct {
 	Groups             []*FlagGroup
 	GroupIndex         int
@@ -68,10 +77,17 @@ type FlagSet struct {
 	Mutex              map[string]*Flag
 }
 
+// DefaultFailExitCode is the exit code that will be used when
+// argument processing fails and `OnFail` is not `Continue`
 var DefaultFailExitCode int = 2
+
+// Some programs (e.g. grep) use a different exit code for file errors
+// than for other errors.
 var DefaultFileErrExitCode int = 2
 
-
+// Function `NewFlagGroup()` creates a new titled flag group within a
+// flagset and makes it the default `FlagGroup` to which subsequent
+// flags will be added.
 func (fs *FlagSet) NewFlagGroup(title string) *FlagGroup {
 	fg := NewFlagGroup(title)
 	fs.Groups = append(fs.Groups, fg)
@@ -79,11 +95,16 @@ func (fs *FlagSet) NewFlagGroup(title string) *FlagGroup {
 	return fg
 }
 
+// Function `Group()` returns a pointer to the current default
+// `FlagGroup`.
 func (fs *FlagSet) Group() *FlagGroup {
 	// Happy for this to panic
 	return fs.Groups[fs.GroupIndex]
 }
 
+// Function `Group()` creates a new titled flag group in the default
+// `FlagSet`. If the `FlagSet` is empty, it just renames the default
+// flag group.
 func Group(title string) {
 	fs := CommandLine
 	// If there's only one group and no flags yet, just rename the
@@ -95,8 +116,10 @@ func Group(title string) {
 	_ = CommandLine.NewFlagGroup(title)
 }
 
+// Functional option type for `FlagSet` options.
 type FlagSetOption = func (fs *FlagSet)
 
+// Creates a new flagset, applying the supplied functional options.
 func NewFlagSet(opts ...FlagSetOption) *FlagSet {
 	fs := &FlagSet {
 		Groups: []*FlagGroup{
@@ -121,44 +144,48 @@ func NewFlagSet(opts ...FlagSetOption) *FlagSet {
 	return fs
 }
 
+// Option `WithGroupTitle()` sets the title of the default (first)
+// flag group.
 func WithGroupTitle(title string) FlagSetOption {
 	return func(fs *FlagSet) {
 		fs.Groups[0].Title = title
 	}
 }
 
+// Option `WithOutputWriter()` sets the output writer for error
+// messages used if `OnFail` is not `Silent`.
 func WithOutputWriter(w io.Writer) FlagSetOption {
 	return func(fs *FlagSet) {
 		fs.Output = w
 	}
 }
 
+// Option `WithPanicOnFail()` causes argument processing to panic on
+// any failure.
 func WithPanicOnFail() FlagSetOption {
 	return func(fs *FlagSet) {
 		fs.OnFail.SetPanicBit()
 	}
 }
 
+// Option `WithContinueOnFail()` causes argument processing to
+// continue on failure, likely causing unpredictable results.
 func WithContinueOnFail() FlagSetOption {
 	return func(fs *FlagSet) {
 		fs.OnFail.SetContinueBit()
 	}
 }
 
+// Option `WithSilentFail()` suppresses printing error messages due to
+// argument processing failure.
 func WithSilentFail() FlagSetOption {
 	return func(fs *FlagSet) {
 		fs.OnFail.SetSilentBit()
 	}
 }
 
-func IgnoringDoubleDash() FlagSetOption {
-	return func(fs *FlagSet) {
-		fs.IgnoreDoubleDash = true
-	}
-}
-
-// HasFlags returns a bool to indicate if the FlagSet has any flags
-// defined.
+// Function `HasFlags()` returns `true` if the `FlagSet` has any flags
+// defined and `false` if the `FlagSet` is empty.
 func (fs *FlagSet) HasFlags() bool {
 	n := 0
 	for _, g := range fs.Groups {
@@ -167,10 +194,15 @@ func (fs *FlagSet) HasFlags() bool {
 	return n > 0
 }
 
+// Function `LookupLong()` looks up a long flag in the `FlagSet`. If
+// the string is a unique prefix match for a long option, a pointer to
+// the corresponding `Flag` is returned, otherwise `nil` is returned.
+//
+// However, we treat single-rune longs as shorts preferentially,
+// otherwise we can have the situation where -x and --x are different,
+// which could happen if "x" was the shortest unique prefix of a long,
+// but 'x' was also  defined as a short for a different flag.
 func (fs *FlagSet) LookupLong(long string) *Flag {
-	// For single-rune longs, give priority to shorts, otherwise we
-	// can have the situation where -x and --x are different (by way
-	// of shortest unique prefix being valid for long options).
 	r, tail := FirstRune(long)
 	if len(tail) == 0 {
 		f := fs.LookupShort(r)
@@ -186,8 +218,8 @@ func (fs *FlagSet) LookupLong(long string) *Flag {
 	return f
 }
 
-// LookupShort returns the Flag structure of the shortcut flag,
-// returning nil if none exists.
+// Function `LookupShort()` returns a pointer to the `Flag`
+// corresponding to the given rune or nil if none exists.
 func (fs *FlagSet) LookupShort(r rune) *Flag {
 	if r == NoShort {
 		if fs.HasHyphenNumIdiom {
@@ -201,6 +233,10 @@ func (fs *FlagSet) LookupShort(r rune) *Flag {
 	return nil
 }
 
+// Function `Lookup()` takes either a string or a rune and looks it up
+// in the `FlagSet` as a long or as a short option as appropriate,
+// returning a pointer to the corresponding `Flag` if it exists or
+// `nil` if it doesn't.
 func (fs *FlagSet) Lookup(item interface{}) *Flag {
 	if long, ok := item.(string); ok {
 		return fs.LookupLong(long)
@@ -211,10 +247,14 @@ func (fs *FlagSet) Lookup(item interface{}) *Flag {
 	return nil
 }
 
+// Function `Lookup()` takes either a string or a rune and looks it up
+// as a long or as a short option as appropriate in the default `FlagSet`.
 func Lookup(item interface{}) *Flag {
 	return CommandLine.Lookup(item)
 }
 
+// Function `AddFlag()` adds a flag to the default `FlagGroup` in a
+// `FlagSet`.
 func (fs *FlagSet) AddFlag(f *Flag) error {
 	if f == nil {
 		return fmt.Errorf("cannot add nil flag")
@@ -255,6 +295,10 @@ func (fs *FlagSet) AddFlag(f *Flag) error {
 	return nil
 }
 
+
+// Function `Var()` is the principal method of creating new flags in a
+// `FlagSet`. Its usage is discussed at length in the introductory
+// documentation.
 func (fs *FlagSet) Var(value interface{}, short rune, long string, usage string, opts ...FlagOption) {
 	// We need to set the parent flagset early because some of the
 	// functions downstream of NewFlag() check that the flag doesn't
@@ -270,10 +314,18 @@ func (fs *FlagSet) Var(value interface{}, short rune, long string, usage string,
 	}
 }
 
+// Function `Var()` creates a new `Flag` in the current `FlagGroup` in
+// the default `FlagSet`.
 func Var(value interface{}, short rune, long string, usage string, opts ...FlagOption) {
 	CommandLine.Var(value, short, long, usage, opts...)
 }
 
+// Function `Equ()` creates an equivalent to an extant flag,
+// identified by a long option (`equiv`), with the given argument
+// `value`. For example, `grep`'s `-I` is equivalent to
+// `--binary-files=without-match`. I've never seen these kinds of
+// shortcut equivalents defined in terms of short options, so the
+// target flag is identified by the long option only.
 func (fs *FlagSet) Equ(short rune, long string, equiv string, value string) {
 	var f *Flag = nil
 	f = fs.LookupLong(equiv)
@@ -287,6 +339,8 @@ func (fs *FlagSet) Equ(short rune, long string, equiv string, value string) {
 	}
 }
 
+// Function `Equ()` creates an equivalent to an existing flag with a
+// value (optarg) in the default `FlagSet`.
 func Equ(short rune, long string, equiv string, value string) {
 	CommandLine.Equ(short, long, equiv, value)
 }
@@ -342,7 +396,11 @@ func (fs *FlagSet) Warnf(format string, args ...interface{}) {
 	}
 }
 
-
+// Function `FlagStringMaxLen()` determines and returns the maximum
+// length of any FlagString() in a `FlagSet` (without regard to
+// `FlagGroup` membership). The flag string is a formatted
+// representation of the long and/or short options for a flag used in
+// help/usage output.
 func (fs *FlagSet) FlagStringMaxLen() int {
 	maxLen := 0
 	for _, g := range fs.Groups {
@@ -353,6 +411,9 @@ func (fs *FlagSet) FlagStringMaxLen() int {
 	return maxLen
 }
 
+// Function `AlignedFlagDescriptions()` returns a slice of
+// similarly-formatted string descriptions of the `Flag`s in a
+// `FlagSet`, separated by `FlagGroup` titles.
 func (fs *FlagSet) AlignedFlagDescriptions(pre, mid, post string) []string {
 	fstrs := []string{}
 	maxl := fs.FlagStringMaxLen()
@@ -366,8 +427,8 @@ func (fs *FlagSet) AlignedFlagDescriptions(pre, mid, post string) []string {
 	return fstrs
 }
 
-// Function Reset clears the input & output args and the mutexes while
-// keeping the flag setup
+// Function `Reset()` clears the input & output args, mutexes, and
+// counts while keeping the flag setup. It mostly exists for testing.
 func (fs *FlagSet) Reset() {
 	// fmt.Fprintf(os.Stderr, "FlagSet has %d groups and %d mutexes\n", len(fs.Groups), len(fs.Mutex))
 	fs.InputArgs.Clear()

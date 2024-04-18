@@ -2,6 +2,8 @@
 // argument parsing with, for the programmer, the functional options
 // pattern.
 //
+// ## Overview
+//
 // It is somewhat inspired by the `pflag` package in some respects,
 // but very significantly different in others. The most significant
 // difference is that there is only one `Var()` function (rather than
@@ -31,7 +33,13 @@
 //
 // That said, `fflag` meets the onerous GNU expectation that “users
 // can abbreviate the option names as long as the abbreviations are
-// unique”.
+// unique”. This gives rise to the issue that a long flag `--xyzzy`
+// could be unique as `--x`, but a short flag `-x` could be defined
+// for something completely different. `fflag` resolves this by giving
+// priority to the short flag interpretation if a long flag is one
+// character long, so that `-x` and `--x` are interpreted the same
+// even if `--xyzzy` is different and `--x` would be unique: you would
+// have to type `--xy` to get `--xyzzy`.
 //
 // `fflag` borrows the `Flag` and `FlagSet` names from `pflag`, adding
 // `FlagGroup`. The purpose of a flag group is to enable usage
@@ -71,7 +79,7 @@
 // A flag need not have a single-character shortcut. If there is no
 // shortcut, a `fflag.NoShort` is given for the shortcut argument:
 //
-//    fflag.Var(&value, fflag.NoShort, "help", "prints a help message to stdout")
+//    fflag.Var(&value, fflag.NoShort, "help", "prints a help message")
 //
 // Only letters and numbers are normally allowed as shortcuts. The
 // sole exception is '?' due to its widespread use as an alias for
@@ -164,21 +172,25 @@
 //     f := NewFlag(&value, 'f', "file", "supply a filename",
 //         WithCallback(MyFunc))
 //
-// The callback function is called with the given pointer, `&value`
-// (via the `interface{}` argument), short option, long option,
-// command-line argument (as a `string`, if any), and position on the
-// command-line. Consider a program `prog`, with the above "file"
-// flag, invoked as follows:
+// The callback function is called with the `Flag` pointer, string
+// argument and flag position (in os.Argv). The underlying variable,
+// short option, long option, etc. can be retrieved via the `Flag`
+// pointer. Consider a program `prog`, with the above "file" flag,
+// invoked as follows:
 //
 //     prog -f foo.txt --file bar.txt
 //
 // Here, `MyFunc` would be called twice as:
 //
-//     MyFunc(&value, 'f', "file", "foo.txt", 1)
-//     MyFunc(&value, 'f', "file", "bar.txt", 3)
+//     MyFunc(f, "foo.txt", 1)
+//     MyFunc(f, "bar.txt", 3)
 //
 // The `value` is _not_ set by `fflag` if a callback is supplied (or
-// if `value` implements the `SetValue` interface).
+// if `value` implements the `SetValue` interface). You cannot call
+// f.Set() in the callback as this would lead to infinite recursion:
+// it is f.Set() that calls the callback. If you want to set the value
+// "normally", call `f.SetOnly()` instead, which just sets the value
+// and bypasses the usual flag type logic.
 //
 // For unary (non-boolean) flags, a default can be supplied:
 //
@@ -200,7 +212,9 @@
 // changed and keeps the value "/dev/stdout"; if `-o` is supplied
 // _without an argument_, `outdev` changes to the default,
 // `"/dev/stderr"`, and if an argument is supplied, `outdev` is
-// changed to the given argument.
+// changed to the given argument. This (rather strange) behavior is
+// required to support `grep`'s `--color` option, for example (more
+// below).
 //
 // If the value is a (pointer to a) scalar, but the default is a
 // slice, the value is constrained to the values in the default, like
@@ -218,7 +232,7 @@
 //
 // The actual default is the first value in the slice. The remaining
 // values in the slice constrain the set of acceptable values. For
-// some program, `prog`, with the above flag deefinition, the value of
+// some program, `prog`, with the above flag definition, the value of
 // `diract` after `fflag.Parse()` would be exactly the same for:
 //
 //     $ prog
@@ -244,7 +258,7 @@
 // wild.
 //
 //     color := "never"
-//     fflag.Var(&file, fflag.NoShort, "color", "display matches in color",
+//     fflag.Var(&color, fflag.NoShort, "color", "display matches in color",
 //         fflag.WithOptionalDefault([]string{"auto", "never", "always"}),
 //         fflag.WithTypeTag("[=WHEN]"))
 //
@@ -255,6 +269,10 @@
 // value changes to that argument _provided that_ it is in the default
 // slice. If `--color=foo` were given, it would result in an error.
 //
+// ## Package Options
+//
+//
+
 package fflag
 
 import (
@@ -268,6 +286,8 @@ import (
 	"github.com/EmmetCaulfield/fflag/pkg/types"
 )
 
+// We have half-hearted support for list optargs with a list
+// separator. This functionality is not well tested.
 var DefaultListSeparator string = ","
 
 // POSIX uses '?' for a special purpose in `getopt()`, making it
@@ -304,8 +324,13 @@ func (fe *FlagError) Error() string {
 	return fe.s
 }
 
+// If a CallbackFunction is supplied using the `WithCallback()` option
+// to `Var()`, it will be called when the corresponding flag appears
+// on the command-line.
 type CallbackFunction func(f *Flag, arg string, pos int) error
 
+// FlagType is a bitmask whose bits indicate various properties of a
+// Flag.
 type FlagType uint16
 
 const (
@@ -364,6 +389,7 @@ func (ft *FlagType) SetFileBit()           { *ft = *ft | FileBit }
 func (ft *FlagType) SetDefOptionalBit()    { *ft = *ft | DefOptionalBit }
 func (ft *FlagType) SetSavedFileBit()      { *ft = *ft | SavedFileBit }
 
+// A Flag represents a command-line flag, option, or switch.
 type Flag struct {
 	Value         interface{}
 	Long          string
@@ -381,16 +407,26 @@ type Flag struct {
 	savedCallback CallbackFunction
 }
 
+// The ID separator separates the short version of a flag from the
+// long version of a flag in a unique representation of the flag that
+// is currently unused. The intent was to be able to represent flags
+// with long and short versions (e.g. "i/ignore-case"), short versions
+// only (e.g. "I/"), long versions only ("/color") and the -NUM idiom
+// ("/") in a readable and intuitive way, but this wasn't really used
+// subsequently.
 const IdSep string = "/"
 
 // A non-numeric, non-alphabetic ASCII character (other than '?') used
 // as a placeholder meaning "there is no short option" in a variety of
 // contexts.
 const NoShort rune = rune(0)
+
+// A string, otherwise not allowed as an option, used as a placeholder
+// meaning "there is no long option" in a variety of contexts.
 const NoLong string = ""
 
-// Only allow letters, numbers, and the question-mark as shortcut
-// letters
+// We only allow letters, numbers, and the question-mark as short
+// option letters.
 func IsValidShort(r rune) bool {
 	if PosixRejectQuest && r == '?' {
 		log.Panicf("cannot use '-?' as a short option if `fflag.PosixRejectQuest` is `true`")
@@ -401,7 +437,8 @@ func IsValidShort(r rune) bool {
 	return r == '?' || unicode.IsLetter(r) || unicode.IsNumber(r)
 }
 
-// Only allow letters, numbers, and hyphens in labels
+// We only allow letters, numbers, and hyphens in long options, which
+// must be at least two characters.
 func IsValidLong(s string) bool {
 	// A long must be longer than one byte:
 	if len(s) < 2 {
@@ -422,6 +459,7 @@ func IsValidLong(s string) bool {
 	return true
 }
 
+// Make sure that a short/long pair is valid as a combination
 func IsValidPair(short rune, long string) bool {
 	if short == NoShort && long == NoLong {
 		// We use this for the -NUM special case used by a few utilities
@@ -443,6 +481,7 @@ func IsValidPair(short rune, long string) bool {
 	return false
 }
 
+// Generate an ID string for a valid short/long pair
 func ID(short rune, long string) string {
 	if IsValidPair(short, long) {
 		return string(short) + IdSep + long
@@ -462,6 +501,7 @@ func emptyOrNoShort(s string) bool {
 	return false
 }
 
+// Convert an ID string back into separate short/long options
 func UnID(id string) (rune, string) {
 	if id == "" {
 		return ErrRuneEmptyStr, ""
@@ -484,6 +524,8 @@ func UnID(id string) (rune, string) {
 	return ErrRuneIdPartsBad, ""
 }
 
+// Return the parent FlagSet of a flag or the default FlagSet
+// (CommandLine) if unset
 func (f *Flag) ParentFlagSet() *FlagSet {
 	if f.parentFlagSet == nil {
 		return CommandLine
@@ -491,6 +533,10 @@ func (f *Flag) ParentFlagSet() *FlagSet {
 	return f.parentFlagSet
 }
 
+// Function `MutexCollides()` returns a pointer to the
+// previously-appearing flag that collides with the current flag in a
+// mutually-exclusive set or nil if the flag is not in a mutex set or
+// is the first flag appearing in a mutex set.
 func (f *Flag) MutexCollides() *Flag {
 	if f.Mutexes == nil || len(f.Mutexes) == 0 {
 		return nil
@@ -545,10 +591,15 @@ func (f *Flag) ExitCallback() {
 	}
 }
 
+// Function `Test()` tries to silently test if a flag can be set to
+// the given value. There are likely some cases where `Test()` will
+// not return an error, but a subsequent call to `Set()` will
+// nevertheless fail.
 func (f *Flag) Test(value interface{}, argPos int) error {
 	return f.testOrSet(value, argPos, false)
 }
 
+// Function `Set()` tries to set flag's value to the given value.
 func (f *Flag) Set(value interface{}, argPos int) error {
 	return f.testOrSet(value, argPos, true)
 }
@@ -704,15 +755,19 @@ func (f *Flag) testOrSet(value interface{}, argPos int, doSet bool) error {
 	return f.testOrSetOnly(value, argPos, doSet)
 }
 
+// Function `TestOnly()` silently tests if a flag's value can be set
+// to the given value, bypassing flag type logic.
 func (f *Flag) TestOnly(value interface{}, argPos int) error {
 	return f.testOrSetOnly(value, argPos, false)
 }
 
+// Function `SetOnly()` tries to set a flag's value bypassing flag
+// type logic.
 func (f *Flag) SetOnly(value interface{}, argPos int) error {
 	return f.testOrSetOnly(value, argPos, true)
 }
 
-// Function testOrSetOnly() sets `f.Value` to `value` if `doSet` is
+// Function `testOrSetOnly()` sets `f.Value` to `value` if `doSet` is
 // `true`, otherwise it silently tests, insofar as possible, whether
 // the set would succeed or not.
 func (f *Flag) testOrSetOnly(value interface{}, argPos int, doSet bool) error {
@@ -740,6 +795,8 @@ func (f *Flag) testOrSetOnly(value interface{}, argPos int, doSet bool) error {
 	return nil
 }
 
+// Function `GetValue()` returns the current value of the flag as a
+// string.
 func (f *Flag) GetValue() string {
 	if f.AliasFor != nil {
 		f = f.AliasFor
@@ -747,6 +804,8 @@ func (f *Flag) GetValue() string {
 	return types.StrConv(f.Value)
 }
 
+// Function `GetDefaultLen()` returns the length of the default slice
+// if it is a slice or -1 if it is not.
 func (f *Flag) GetDefaultLen() int {
 	if f.AliasFor != nil {
 		f = f.AliasFor
@@ -754,6 +813,8 @@ func (f *Flag) GetDefaultLen() int {
 	return types.SliceLen(f.Default)
 }
 
+// Function `GetDefault()` returns `f.Default` if it is a scalar or the
+// first element of `f.Default` if it is a slice.
 func (f *Flag) GetDefault() interface{} {
 	if f.AliasFor != nil {
 		f = f.AliasFor
@@ -771,8 +832,10 @@ func (f *Flag) GetDefault() interface{} {
 	return f.Default
 }
 
-// InDefaults() returns true if the argument is in the f.Default slice
-// or if f.Default is not a slice, otherwise it returns false.
+// Function `InDefaults()` returns `true` if the argument is in the
+// f.Default slice or if f.Default is not a slice, otherwise it
+// returns `false`. It basically tells if the argument is an allowable
+// value for the flag.
 func (f *Flag) InDefaults(ix interface{}) bool {
 	if f.AliasFor != nil {
 		f = f.AliasFor
@@ -819,6 +882,11 @@ func (f *Flag) GetDefaultDescription() string {
 	return buf.String()
 }
 
+// Function `GetTypeTag()` returns a tag indicating the expected type
+// of the optarg to a flag for help/usage text. It's generally
+// expected that this will, in practice, be supplied via the
+// `WithTypeTag()` option in cases where the optarg has some further
+// meaning (e.g. "GLOB", "FILE", "PATTERN", etc. in `grep`'s manpage).
 func (f *Flag) GetTypeTag() string {
 	if f.AliasFor != nil {
 		f = f.AliasFor
@@ -862,6 +930,8 @@ func (f *Flag) String() string {
 	return ""
 }
 
+// Function `FormatShort()` returns a string showing a short flag with
+// its (optional?) type tag where appropriate.
 func (f *Flag) FormatShort() string {
 	if f.Short == NoShort {
 		if f.Long == NoLong {
@@ -881,6 +951,8 @@ func (f *Flag) FormatShort() string {
 	return "-" + string(f.Short) + " " + tag
 }
 
+// Function `FormatLong()` returns a string showing a long flag with
+// its (optional?) type tag where appropriate.
 func (f *Flag) FormatLong() string {
 	if f.Long == NoLong {
 		return ""
@@ -934,8 +1006,9 @@ func (f *Flag) DescString() string {
 	return f.Usage
 }
 
-// Provides a sort key for sorting flags in the conventional order
-// based on the short and long versions of the flag.
+// Function `SortKey()` provides a sort key (string) for sorting flags
+// in the conventional order based on the short and long versions of
+// the flag.
 //
 // GNU manpages present flags (within a group) in lexicographic order,
 // ignoring the distinction between long and short flags. That is, a
@@ -951,10 +1024,18 @@ func (f *Flag) SortKey() string {
 	return string(f.Short) + f.Long
 }
 
+// A `FlagOption` is a functional option for flags, provided as an
+// argument to `Var()`
 type FlagOption = func(f *Flag) error
 
+// An `AliasOption` is a functional option for aliases, provided as an
+// argument to `NewAlias()`. This isn't intended to be used directly,
+// but there's no particular reason to hide it.
 type AliasOption = func(f *Flag) error
 
+// Option `WithParent()` sets the parent flagset of a flag for cases
+// where it is not the default flagset and the flag isn't created via
+// the flagset (rare).
 func WithParent(fs *FlagSet) FlagOption {
 	return func(f *Flag) error {
 		if f.parentFlagSet != nil && f.parentFlagSet != fs {
@@ -965,6 +1046,8 @@ func WithParent(fs *FlagSet) FlagOption {
 	}
 }
 
+// Option `withValue()` sets a value for alias options. This is for
+// internal use.
 func withValue(value string) AliasOption {
 	return func(f *Flag) error {
 		f.Value = value
@@ -972,6 +1055,8 @@ func withValue(value string) AliasOption {
 	}
 }
 
+// Option `WithListSeparator()` sets a list separator for slice-valued
+// options so that multiple values can be supplied in one optarg.
 func WithListSeparator(sep rune) FlagOption {
 	return func(f *Flag) error {
 		if f.IsHyphenNum() {
@@ -985,6 +1070,9 @@ func WithListSeparator(sep rune) FlagOption {
 	}
 }
 
+// Option `WithAlias()` allows an alias to be set when a flag is
+// created via `Var()` and requires it to be marked as obsolete or
+// not.
 func WithAlias(short rune, long string, obsolete bool) FlagOption {
 	return func(f *Flag) error {
 		var flag *Flag = nil
@@ -1049,12 +1137,18 @@ func (f *Flag) setupDefault(def interface{}, optional bool) error {
 	return nil
 }
 
+// Option `WithDefault()` allow a default, or default slice, to be
+// provided when a flag is created via `Var()`.
 func WithDefault(def interface{}) FlagOption {
 	return func(f *Flag) error {
 		return f.setupDefault(def, false)
 	}
 }
 
+// Option `WithOptionalDefault()` allow a default, or default slice,
+// to be provided when a flag is created via `Var()`. It differs from
+// `WithDefault()` insofar as it does not set the value of the flag
+// immediately, only when/if the flag appears on the command-line.
 func WithOptionalDefault(def interface{}) FlagOption {
 	return func(f *Flag) error {
 		if f.IsBool() {
@@ -1064,6 +1158,11 @@ func WithOptionalDefault(def interface{}) FlagOption {
 	}
 }
 
+// Option `WithRepeats()` allows a scalar flag to be supplied more
+// than once on the command-line. If `ignore` is true, second and
+// subsequent values are simply ignored (first use prevails),
+// otherwise, the later uses overwrite earlier uses (last use
+// prevails).
 func WithRepeats(ignore bool) FlagOption {
 	return func(f *Flag) error {
 		if f.IsHyphenNum() {
@@ -1090,6 +1189,14 @@ func WithRepeats(ignore bool) FlagOption {
 	}
 }
 
+// Option `AsCounter()` counts the number of times that a flag appears
+// on the command-line. This is useful for options that "increase"
+// based on the number of times they're used, such as a verbosity flag
+// that is used multiple times to indicate increasing levels of
+// verbosity: `-v`, `-vv`, `-vvv`.
+//
+// A counter flag must be a numeric scalar and is implicitly
+// repeatable.
 func AsCounter() FlagOption {
 	return func(f *Flag) error {
 		if f.IsHyphenNum() {
@@ -1112,17 +1219,7 @@ func AsCounter() FlagOption {
 	}
 }
 
-// We distinguish "not implemented" from "obsolete" or "deprecated"
-// for those cases where end users might reasonably expect a
-// particular option to be implemented, but it hasn't been for some
-// reason other than deprecation/obsolesence.
-func NotImplemented() FlagOption {
-	return func(f *Flag) error {
-		f.Type.SetNotImplementedBit()
-		return nil
-	}
-}
-
+// Option `Deprecated()` marks a flag as deprecated.
 func Deprecated() FlagOption {
 	return func(f *Flag) error {
 		f.Type.SetObsoleteBit()
@@ -1130,10 +1227,25 @@ func Deprecated() FlagOption {
 	}
 }
 
+// Option `Obsolete()` is a synonym for `Deprecated()`
 func Obsolete() FlagOption {
 	return Deprecated()
 }
 
+// Option `NotImplemented()` is distinguished from "obsolete" or
+// "deprecated" for those cases where end users might reasonably
+// expect a particular option to be implemented, but it hasn't been
+// for some reason other than deprecation/obsolesence.
+func NotImplemented() FlagOption {
+	return func(f *Flag) error {
+		f.Type.SetNotImplementedBit()
+		return nil
+	}
+}
+
+// Option `WithTypeTag()` supplies a type tag used to label optargs in
+// help/usage output. See how `GLOB`, `FILE`, and `PATTERN` are used
+// in `grep`'s output for example.
 func WithTypeTag(tag string) FlagOption {
 	return func(f *Flag) error {
 		f.ValueTypeTag = tag
@@ -1141,6 +1253,9 @@ func WithTypeTag(tag string) FlagOption {
 	}
 }
 
+// Option `WithTypeTag()` supplies a type tag used to label optargs in
+// help/usage output. See how `GLOB`, `FILE`, and `PATTERN` are used
+// in `grep`'s output for example.
 func WithCallback(callback CallbackFunction) FlagOption {
 	return func(f *Flag) error {
 		if f.IsCounter() {
@@ -1151,8 +1266,8 @@ func WithCallback(callback CallbackFunction) FlagOption {
 	}
 }
 
-// A file-reading flag can't be a counter, have a callback, or be an
-// alias:
+// Option `ReadFile()` marks a slice-valued flag to be populated
+// linewise from a file whose name is given as the optarg to the flag.
 func ReadFile() FlagOption {
 	return func(f *Flag) error {
 		if f.IsHyphenNum() {
@@ -1175,6 +1290,9 @@ func ReadFile() FlagOption {
 	}
 }
 
+// Option `InMutex()` marks a flag as being in a mutually exclusive
+// set with other flags so that only one of the flags in the set can
+// be provided.
 func InMutex(name string) FlagOption {
 	return func(f *Flag) error {
 		fs := f.ParentFlagSet()
@@ -1188,6 +1306,8 @@ func InMutex(name string) FlagOption {
 	}
 }
 
+// Function `NewFlag()` creates a new `Flag` struct detached from any
+// `FlagSet`.
 func NewFlag(value interface{}, short rune, long string, usage string, opts ...FlagOption) *Flag {
 	// We potentially use the type identifier several times
 	valType := types.Type(value)
@@ -1235,6 +1355,8 @@ func NewFlag(value interface{}, short rune, long string, usage string, opts ...F
 	return f
 }
 
+// Function `NewAlias()` creates a new alias (short and/or long) for a
+// `Flag`.
 func (f *Flag) NewAlias(short rune, long string, opts ...FlagOption) *Flag {
 	// alias has same type as target except that the appropriate alias
 	// bits are set
