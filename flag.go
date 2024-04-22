@@ -79,7 +79,7 @@
 // A flag need not have a single-character shortcut. If there is no
 // shortcut, a `fflag.NoShort` is given for the shortcut argument:
 //
-//    fflag.Var(&value, fflag.NoShort, "help", "prints a help message")
+//     fflag.Var(&value, fflag.NoShort, "help", "prints a help message")
 //
 // Only letters and numbers are normally allowed as shortcuts. The
 // sole exception is '?' due to its widespread use as an alias for
@@ -89,8 +89,8 @@
 // Equally, a flag need not have a long version. If you wanted to have
 // `-?` as a short flag with no long version, you would do:
 //
-//    fflag.PosixRejectQuest = false
-//    fflag.Var(&value, '?', fflag.NoLong, "prints a help message to stdout")
+//     fflag.PosixRejectQuest = false
+//     fflag.Var(&value, '?', fflag.NoLong, "prints a help message to stdout")
 //
 // There is a special case (and common idiom) where NEITHER a long NOR
 // a short form is required: `-NUM` (as in `grep`, `head`, `tail`, and
@@ -99,11 +99,10 @@
 // a single hyphen. For example `head`'s `-n/--lines` is best
 // represented as:
 //
-//    uint nlines
-//    fflag.Var(&nlines, 'n', 'lines',
-//        "print the first NUM lines instead of the first 10",
-//        fflag.WithAlias(fflag.NoShort, fflag.NoLong, false),
-//        fflag.WithTypeTag("[-]NUM"))
+//     uint nlines
+//     fflag.Var(&nlines, 'n', 'lines',
+//         "print the first NUM lines instead of the first 10",
+//         fflag.WithAlias(fflag.NoShort, fflag.NoLong, false))
 //
 // Obviously, this special case can only be used once and attempting
 // to use it more than once is a programmer error that results in a
@@ -148,7 +147,7 @@
 // An explicit default can be supplied with `WithDefault()`:
 //
 //     var hard bool
-//     fflag.Var(&hard, 0, "easy", "use easy mode",
+//     fflag.Var(&hard, fflag.NoShort, "easy", "use easy mode",
 //         fflag.WithDefault(true))
 //
 // In this case, `hard` will default to `true` and become false if
@@ -189,8 +188,8 @@
 // if `value` implements the `SetValue` interface). You cannot call
 // f.Set() in the callback as this would lead to infinite recursion:
 // it is f.Set() that calls the callback. If you want to set the value
-// "normally", call `f.SetOnly()` instead, which just sets the value
-// and bypasses the usual flag type logic.
+// "normally" inside a callback, call `f.SetOnly()` instead, which
+// just sets the value and bypasses the usual flag type logic.
 //
 // For unary (non-boolean) flags, a default can be supplied:
 //
@@ -198,7 +197,7 @@
 //     fflag.Var(&file, 'f', "file", "supply a filename",
 //         fflag.WithDefault("/dev/null"))
 //
-// The value will _always_ be set to the default.
+// In this case, the value is set to the default immediately.
 //
 // There exist a few utilities with options that differentiate between
 // the option appearing (at all) and the option appearing with an
@@ -208,17 +207,16 @@
 //     fflag.Var(&outdev, 'o', "out", "supply an output device path",
 //         fflag.WithOptionalDefault("/dev/stderr"))
 //
-// In this case, if `-o` is _not_ supplied at all, `outdev` is not
-// changed and keeps the value "/dev/stdout"; if `-o` is supplied
-// _without an argument_, `outdev` changes to the default,
-// `"/dev/stderr"`, and if an argument is supplied, `outdev` is
-// changed to the given argument. This (rather strange) behavior is
-// required to support `grep`'s `--color` option, for example (more
-// below).
+// In this case, the value is not immediately set to the default. If
+// `-o` is _not_ supplied at all, `outdev` is not changed and keeps
+// the value "/dev/stdout"; if `-o` is supplied _without an argument_,
+// `outdev` changes to the default, `"/dev/stderr"`, and if an
+// argument is supplied, `outdev` is changed to the given
+// argument. This (rather strange) behavior is required to support
+// `grep`'s `--color` option, for example (more below).
 //
-// If the value is a (pointer to a) scalar, but the default is a
-// slice, the value is constrained to the values in the default, like
-// a kind of set or `enum`.
+// If the default is a slice, valid values are constrained to the
+// values in the default, like a kind of set or `enum`.
 //
 // Consider the `--directories` option of GNU `grep`. It can take one
 // of 3 values --- `read`, `skip`, and `recurse` --- with the default
@@ -245,7 +243,8 @@
 //     $ prog --directories recurse
 //
 // But the following would result in a runtime error because `foo` is
-// not in the default slice:
+// not one of "read", "skip", or "recurse", which are in the default
+// slice:
 //
 //     $ prog -d foo
 //

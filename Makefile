@@ -1,7 +1,7 @@
 PKG:=
 
 .PHONY: default
-default:
+default: README.md
 	go build
 
 .PHONY: test
@@ -10,9 +10,9 @@ test: ./pkg/*
 	go test
 
 README.md: flag.go
-	@echo '# `fflag`' > $@
-	go doc | sed -n '2,/^const/p' | head -n-1 >> $@
+	@echo '# `fflag`\n' > $@
+	sed -n '0,/^$$/{s|^// \?||;p}' $< >> $@
 
 .PHONY: clean
 clean:
-	rm -f *~
+	rm -f README.md *~
