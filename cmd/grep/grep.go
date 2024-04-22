@@ -1,6 +1,9 @@
 package main
 
 import (
+	"fmt"
+	"strings"
+
 	"github.com/EmmetCaulfield/fflag"
 )
 
@@ -59,7 +62,35 @@ type OptStruct struct {
 	// -NUM
 }
 
-func setup() {
+func (o *OptStruct) Dump() {
+	fields := strings.Split(fmt.Sprintf("%+v", *o), " ")
+	fields[0] = fields[0][1:]
+	end := len(fields) - 1
+	fields[end] = fields[end][:len(fields[end])-1]
+	maxColonPosition := 0
+	for _, field := range fields {
+		maxColonPosition = max(maxColonPosition, strings.Index(field, ":"))
+	}
+	maxColonPosition++
+	fmt.Println("{")
+	for _, field := range fields {
+		kvp := strings.Split(field, ":")
+		if len(kvp) == 1 {
+			fmt.Printf("\t%*s   %s\n", maxColonPosition, "", kvp[0])
+		} else {
+			fmt.Printf("\t%-*s: %s\n", maxColonPosition, kvp[0], kvp[1])
+		}
+	}
+	fmt.Println("}")
+}
+
+func ValidateRegex(f *fflag.Flag, arg string, pos int) error {
+	fmt.Printf("validating: '%s', '%s', %d\n", f, arg, pos)
+	f.SetOnly(arg, pos)
+	return nil
+}
+
+func setup() *OptStruct {
 	opt := &OptStruct{}
 	fflag.Group("Pattern selection and interpretation")
 	fflag.Var(&opt.ExtendedRegexp, 'E', "extended-regexp", "PATTERNS are extended regular expressions",
@@ -70,8 +101,10 @@ func setup() {
 		fflag.InMutex("pat-type"))
 	fflag.Var(&opt.PerlRegexp, 'P', "perl-regexp", "PATTERNS are Perl regular expressions",
 		fflag.InMutex("pat-type"))
-	fflag.Var(&opt.Regexp, 'e', "regexp", "use PATTERNS for matching", fflag.WithTypeTag("PATTERNS"))
-	fflag.Var(&opt.Regexp, 'f', "file", "take PATTERNS from FILE", fflag.WithTypeTag("FILE"), fflag.ReadFile())
+	fflag.Var(&opt.Regexp, 'e', "regexp", "use PATTERNS for matching", fflag.WithTypeTag("PATTERNS"),
+		fflag.WithCallback(ValidateRegex))
+	fflag.Var(&opt.Regexp, 'f', "file", "take PATTERNS from FILE", fflag.WithTypeTag("FILE"),
+		fflag.ReadFile(), fflag.WithCallback(ValidateRegex))
 	fflag.Var(&opt.IgnoreCase, 'i', "ignore-case", "ignore case distinctions in patterns and data",
 		fflag.InMutex("case"))
 	fflag.Var(&opt.NoIgnoreCase, fflag.NoShort, "no-ignore-case", "do not ignore case distinctions (default)",
@@ -141,9 +174,12 @@ func setup() {
 	// recursive, '-' otherwise.  With fewer than two FILEs, assume -h.
 	// Exit status is 0 if any line is selected, 1 otherwise;
 	// if any error occurs and is not given, the exit status is 2.
+	return opt
 }
 
 func main() {
-	setup()
+	opt := setup()
+	fflag.Parse()
+	opt.Dump()
 	fflag.CommandLine.DumpUsage()
 }
